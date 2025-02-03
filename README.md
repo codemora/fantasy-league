@@ -75,3 +75,47 @@ class LeagueTableRow{
 -int points
 }
 ```
+```mermaid
+erDiagram
+    ADMIN ||--|| LEAGUE : creates
+    LEAGUE ||--o{ SEASON : has
+    SEASON ||--o{ TEAM : has
+    SEASON ||--o{ FIXTURE : has
+    USER ||--o| TEAM : creates
+    TEAM ||--|| FIXTURE : participates
+   
+
+    ADMIN{
+        int admin_id
+        string name
+    }
+    
+    LEAGUE {
+        int league_id
+        string name
+    }
+
+    SEASON {
+        int season_id
+        int year
+    }
+
+    TEAM {
+        int team_id
+        string team_name
+        int user_id
+    }
+
+    FIXTURE {
+        int fixture_id
+        int season_id
+        int home_team_id
+        int away_team_id
+        date match_date
+    }
+
+    USER {
+        int user_id
+        string username
+    }
+```
