@@ -293,8 +293,13 @@ string name
 
 SEASON {
 int season_id
-int year
+int league_id
+string period
+int team_limit
 int starting_budget
+boolean is_double_leg
+date start_date
+date end_date
 }
 
 SEASON_ENTRANT {
@@ -315,6 +320,7 @@ TEAM {
 int team_id
 int created_by_user_id
 string team_name
+string slogan
 }
 
 FIXTURE {
@@ -323,7 +329,10 @@ int season_id
 int gameweek_id
 int home_team_id
 int away_team_id
-date match_date
+int home_team_score
+int away_team_score
+boolean is_played
+datetime start_date_time
 long simulation_seed
 }
 
@@ -342,11 +351,14 @@ int player_id
 int fixture_id
 int goals
 int assists
+int minutes_played
 boolean clean_sheet
 int goals_conceded
 int own_goals
 int penalties_saved
 int penalties_missed
+int yellow_cards
+int red_cards
 }
 
 SCORING_RULE {
@@ -357,6 +369,14 @@ string position
 int points_per_goal
 int points_per_assist
 int points_per_clean_sheet
+int points_per_appearance_60
+int points_per_appearance_1to59
+int points_per_goals_conceded_per_three
+int points_per_penalty_save
+int points_per_penalty_miss
+int points_per_yellow_card
+int points_per_red_card
+int points_per_own_goal
 }
 
 FANTASY_SQUAD {
@@ -372,6 +392,7 @@ int squad_player_id
 int squad_id
 int player_id
 int purchase_price
+datetime added_at
 }
 
 GAMEWEEK_LINEUP {
@@ -396,6 +417,7 @@ int gameweek_id
 int player_out_id
 int player_in_id
 int points_cost
+datetime timestamp
 }
 ```
 
