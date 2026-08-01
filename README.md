@@ -12,13 +12,21 @@ classDiagram
 
 class Team{
 -int id
+-int created_by_user_id
 -String name
 -String slogan
 }
 
 class League{
 -int id
+-int created_by_user_id
 -String name
+}
+
+class SeasonEntrant{
+-int id
+-int season_id
+-int team_id
 }
 
 class Season{
@@ -27,7 +35,7 @@ class Season{
 -int league_id
 -int team_limit
 -int startingBudget
--List~Team~ teams
+-List~SeasonEntrant~ entrants
 -List~Fixture~ fixtures
 -List~Gameweek~ gameweeks
 -bool isDoubleLeg
@@ -90,6 +98,7 @@ COMPLETE
 class Player{
 -int id
 -int team_id
+-int created_by_user_id
 -String name
 -String position
 -int value
@@ -116,6 +125,7 @@ class PlayerPerformance{
 class ScoringRule{
 -int id
 -int season_id
+-int created_by_user_id
 -String position
 -int pointsPerGoal
 -int pointsPerAssist
@@ -206,10 +216,20 @@ USER
 Team "1" --> "many" Player : squad
 Fixture "1" --> "many" PlayerPerformance : records
 Player "1" --> "many" PlayerPerformance : has
+League "1" --> "many" Season : has
 Season "1" --> "many" Gameweek : has
 Season "1" --> "many" ScoringRule : configures
+Season "1" --> "many" Fixture : has
+Season "1" --> "many" SeasonEntrant : has
+SeasonEntrant "many" --> "1" Team : enters
 Gameweek "1" --> "many" Fixture : groups
+Team "1" --> "many" Fixture : plays_home
+Team "1" --> "many" Fixture : plays_away
 User "1" --> "many" FantasySquad : owns
+User "1" --> "many" League : creates
+User "1" --> "many" Team : creates
+User "1" --> "many" Player : generates
+User "1" --> "many" ScoringRule : configures
 FantasySquad "1" --> "many" SquadPlayer : contains
 SquadPlayer "many" --> "1" Player : selects
 FantasySquad "many" --> "1" Season : plays_in
@@ -219,6 +239,9 @@ Gameweek "1" --> "many" GameweekLineup : has
 Gameweek "1" --> "many" Transfer : has
 GameweekLineup "1" --> "many" LineupSlot : has
 LineupSlot "many" --> "1" Player : selects
+GameweekLineup "many" --> "1" Player : captain
+Transfer "many" --> "1" Player : player_out
+Transfer "many" --> "1" Player : player_in
 ```
 `ADMIN` and `USER` are merged into a single `USER` entity with a `role`, since both are just accounts distinguished by permissions.
 
@@ -230,7 +253,8 @@ USER ||--o{ PLAYER : generates
 USER ||--o{ SCORING_RULE : configures
 USER ||--o{ FANTASY_SQUAD : owns
 LEAGUE ||--o{ SEASON : has
-SEASON ||--o{ TEAM : has
+SEASON ||--o{ SEASON_ENTRANT : has
+SEASON_ENTRANT }o--|| TEAM : enters
 SEASON ||--o{ GAMEWEEK : has
 SEASON ||--o{ SCORING_RULE : configures
 GAMEWEEK ||--o{ FIXTURE : groups
@@ -249,6 +273,9 @@ GAMEWEEK_LINEUP ||--o{ LINEUP_SLOT : has
 LINEUP_SLOT }o--|| PLAYER : selects
 FANTASY_SQUAD ||--o{ TRANSFER : logs
 GAMEWEEK ||--o{ TRANSFER : has
+GAMEWEEK_LINEUP }o--|| PLAYER : captains
+TRANSFER }o--|| PLAYER : "transfers out"
+TRANSFER }o--|| PLAYER : "transfers in"
 
 USER {
 int user_id
@@ -258,6 +285,7 @@ string role
 
 LEAGUE {
 int league_id
+int created_by_user_id
 string name
 }
 
@@ -265,6 +293,12 @@ SEASON {
 int season_id
 int year
 int starting_budget
+}
+
+SEASON_ENTRANT {
+int entrant_id
+int season_id
+int team_id
 }
 
 GAMEWEEK {
@@ -277,6 +311,7 @@ string status
 
 TEAM {
 int team_id
+int created_by_user_id
 string team_name
 }
 
@@ -293,6 +328,7 @@ long simulation_seed
 PLAYER {
 int player_id
 int team_id
+int created_by_user_id
 string name
 string position
 int value
@@ -314,6 +350,7 @@ int penalties_missed
 SCORING_RULE {
 int rule_id
 int season_id
+int created_by_user_id
 string position
 int points_per_goal
 int points_per_assist
@@ -360,7 +397,7 @@ int points_cost
 }
 ```
 
-**Constraints not expressible in the diagram:** `PLAYER_PERFORMANCE` is unique on `(player_id, fixture_id)`; `SCORING_RULE` is unique on `(season_id, position)`.
+**Constraints not expressible in the diagram:** `PLAYER_PERFORMANCE` is unique on `(player_id, fixture_id)`; `SCORING_RULE` is unique on `(season_id, position)`; `SEASON_ENTRANT` is unique on `(season_id, team_id)`.
 
 # Scoring Rules
 
