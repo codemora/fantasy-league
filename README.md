@@ -254,3 +254,24 @@ boolean is_captain
 boolean is_starting
 }
 ```
+
+
+# Scoring Rules
+
+Default fantasy points, weighted by position. Bench players never score; a starting player who doesn't feature scores 0 (no auto-substitutions in v1).
+
+| Stat | GK | DEF | MID | FWD |
+|---|---|---|---|---|
+| Goal | 10 | 6 | 5 | 4 |
+| Assist | 3 | 3 | 3 | 3 |
+| Clean sheet | 4 | 4 | 1 | 0 |
+| Played 60+ min | 2 | 2 | 2 | 2 |
+| Played 1-59 min | 1 | 1 | 1 | 1 |
+| Every 3 goals conceded | -1 | -1 | - | - |
+| Penalty save | 5 | - | - | - |
+| Penalty miss | -2 | -2 | -2 | -2 |
+| Yellow card | -1 | -1 | -1 | -1 |
+| Red card | -3 | -3 | -3 | -3 |
+| Own goal | -2 | -2 | -2 | -2 |
+
+The captain's total points for the gameweek are doubled.
