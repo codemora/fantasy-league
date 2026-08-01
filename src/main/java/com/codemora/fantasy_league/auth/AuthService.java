@@ -12,7 +12,10 @@ import com.codemora.fantasy_league.auth.dto.RegisterRequest;
 import com.codemora.fantasy_league.auth.dto.UserResponse;
 import com.codemora.fantasy_league.common.error.ConflictException;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 public class AuthService {
 
     private final UserRepository userRepository;
@@ -34,6 +37,7 @@ public class AuthService {
     @Transactional
     public UserResponse register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.username())) {
+            log.warn("registration_conflict username={}", request.username());
             throw new ConflictException("Username '" + request.username() + "' is already taken");
         }
         User user = User.builder()
@@ -41,16 +45,23 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .role(Role.USER)
                 .build();
-        return toUserResponse(userRepository.save(user));
+        user = userRepository.save(user);
+        log.info("user_registered user_id={} username={}", user.getId(), user.getUsername());
+        return toUserResponse(user);
     }
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByUsername(request.username())
-                .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        User user = userRepository.findByUsername(request.username()).orElse(null);
+        if (user == null) {
+            log.warn("login_failed username={} reason=unknown_username", request.username());
             throw new BadCredentialsException("Invalid username or password");
         }
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            log.warn("login_failed username={} reason=bad_password", request.username());
+            throw new BadCredentialsException("Invalid username or password");
+        }
+        log.info("login_succeeded user_id={} username={}", user.getId(), user.getUsername());
         return issueTokens(user);
     }
 
