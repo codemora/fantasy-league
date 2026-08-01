@@ -108,6 +108,10 @@ class PlayerPerformance{
 -int assists
 -int minutesPlayed
 -bool cleanSheet
+-int goalsConceded
+-int ownGoals
+-int penaltiesSaved
+-int penaltiesMissed
 -int yellowCards
 -int redCards
 +save() bool
@@ -120,8 +124,14 @@ class ScoringRule{
 -int pointsPerGoal
 -int pointsPerAssist
 -int pointsPerCleanSheet
+-int pointsPerAppearance60
+-int pointsPerAppearance1to59
+-int pointsPerGoalsConcededPerThree
+-int pointsPerPenaltySave
+-int pointsPerPenaltyMiss
 -int pointsPerYellowCard
 -int pointsPerRedCard
+-int pointsPerOwnGoal
 +save() bool
 }
 
@@ -130,12 +140,10 @@ class FantasySquad{
 -int user_id
 -int season_id
 -int budget
--int captain_player_id
 -List~SquadPlayer~ players
 +save() bool
 +addPlayer(Player) bool
 +removePlayer(Player) bool
-+setCaptain(Player) bool
 +getGameweekPoints(Gameweek) int
 +getTotalPoints() int
 }
@@ -144,8 +152,28 @@ class SquadPlayer{
 -int id
 -int squad_id
 -int player_id
--bool isCaptain
--bool isStarting
+-DateTime addedAt
++save() bool
+}
+
+class GameweekLineup{
+-int id
+-int squad_id
+-int gameweek_id
+-int captain_player_id
+-List~int~ startingPlayerIds
+-List~int~ benchPlayerIds
++save() bool
++getPoints() int
+}
+
+class Transfer{
+-int id
+-int squad_id
+-int gameweek_id
+-int player_out_id
+-int player_in_id
+-DateTime timestamp
 +save() bool
 }
 
@@ -155,24 +183,31 @@ class FantasyLeaderboard{
 }
 
 Team "1" --> "many" Player : squad
-Fixture "many" --> "many" PlayerPerformance : records
+Fixture "1" --> "many" PlayerPerformance : records
 Player "1" --> "many" PlayerPerformance : has
 Season "1" --> "many" Gameweek : has
 Gameweek "1" --> "many" Fixture : groups
 FantasySquad "1" --> "many" SquadPlayer : contains
 SquadPlayer "many" --> "1" Player : selects
 FantasySquad "many" --> "1" Season : plays_in
+FantasySquad "1" --> "many" GameweekLineup : sets
+FantasySquad "1" --> "many" Transfer : logs
+Gameweek "1" --> "many" GameweekLineup : has
+Gameweek "1" --> "many" Transfer : has
 ```
 ```mermaid
 erDiagram
-ADMIN ||--|| LEAGUE : creates
+ADMIN ||--o{ LEAGUE : creates
+ADMIN ||--o{ TEAM : creates
+ADMIN ||--o{ PLAYER : generates
+ADMIN ||--o{ SCORING_RULE : configures
 LEAGUE ||--o{ SEASON : has
 SEASON ||--o{ TEAM : has
 SEASON ||--o{ GAMEWEEK : has
 GAMEWEEK ||--o{ FIXTURE : groups
 SEASON ||--o{ FIXTURE : has
-USER ||--o| TEAM : creates
-TEAM ||--|| FIXTURE : participates
+TEAM ||--o{ FIXTURE : "plays home"
+TEAM ||--o{ FIXTURE : "plays away"
 TEAM ||--o{ PLAYER : squad
 PLAYER ||--o{ PLAYER_PERFORMANCE : has
 FIXTURE ||--o{ PLAYER_PERFORMANCE : records
@@ -180,6 +215,10 @@ USER ||--o{ FANTASY_SQUAD : owns
 SEASON ||--o{ FANTASY_SQUAD : has
 FANTASY_SQUAD ||--o{ SQUAD_PLAYER : contains
 SQUAD_PLAYER }o--|| PLAYER : selects
+FANTASY_SQUAD ||--o{ GAMEWEEK_LINEUP : sets
+GAMEWEEK ||--o{ GAMEWEEK_LINEUP : has
+FANTASY_SQUAD ||--o{ TRANSFER : logs
+GAMEWEEK ||--o{ TRANSFER : has
 
 ADMIN{
 int admin_id
@@ -205,7 +244,6 @@ int number
 TEAM {
 int team_id
 string team_name
-int user_id
 }
 
 FIXTURE {
@@ -237,6 +275,18 @@ int fixture_id
 int goals
 int assists
 boolean clean_sheet
+int goals_conceded
+int own_goals
+int penalties_saved
+int penalties_missed
+}
+
+SCORING_RULE {
+int rule_id
+string position
+int points_per_goal
+int points_per_assist
+int points_per_clean_sheet
 }
 
 FANTASY_SQUAD {
@@ -250,11 +300,23 @@ SQUAD_PLAYER {
 int squad_player_id
 int squad_id
 int player_id
-boolean is_captain
-boolean is_starting
+}
+
+GAMEWEEK_LINEUP {
+int lineup_id
+int squad_id
+int gameweek_id
+int captain_player_id
+}
+
+TRANSFER {
+int transfer_id
+int squad_id
+int gameweek_id
+int player_out_id
+int player_in_id
 }
 ```
-
 
 # Scoring Rules
 
