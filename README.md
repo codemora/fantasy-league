@@ -103,7 +103,7 @@ class Player{
 -int created_by_user_id
 -String name
 -String position
--int value
+-int marketValue
 +getSeasonStats() List~PlayerPerformance~
 }
 
@@ -342,7 +342,7 @@ int team_id
 int created_by_user_id
 string name
 string position
-int value
+int market_value
 }
 
 PLAYER_PERFORMANCE {
