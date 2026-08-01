@@ -11,10 +11,13 @@ import org.springframework.web.bind.annotation.RestController;
 import com.codemora.fantasy_league.team.dto.CreateTeamRequest;
 import com.codemora.fantasy_league.team.dto.TeamResponse;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/teams")
+@Tag(name = "Teams")
 public class TeamController {
 
     private final TeamService teamService;
@@ -25,6 +28,7 @@ public class TeamController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Create a team", description = "ADMIN only. Team names must be unique.")
     public ResponseEntity<TeamResponse> create(@Valid @RequestBody CreateTeamRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(teamService.create(request));
     }

@@ -11,10 +11,13 @@ import org.springframework.web.bind.annotation.RestController;
 import com.codemora.fantasy_league.league.dto.CreateLeagueRequest;
 import com.codemora.fantasy_league.league.dto.LeagueResponse;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/leagues")
+@Tag(name = "Leagues")
 public class LeagueController {
 
     private final LeagueService leagueService;
@@ -25,6 +28,7 @@ public class LeagueController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Create a league", description = "ADMIN only. League names must be unique.")
     public ResponseEntity<LeagueResponse> create(@Valid @RequestBody CreateLeagueRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(leagueService.create(request));
     }
