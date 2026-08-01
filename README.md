@@ -3,6 +3,8 @@ This is an API for a fantasy league. Admins run club leagues, seasons, and fixtu
 
 > Note: `League` here means the underlying football competition (admin-managed). Private user-vs-user mini-leagues are a planned feature and will need a distinct name (e.g. `MiniLeague`) to avoid colliding with this entity.
 
+Significant architecture decisions (persistence pattern, stack, simulation determinism, auth, etc.) are recorded in [docs/adr](docs/adr/README.md).
+
 # Class Diagram
 
 Persistence methods (`save()`/`create()`/`update()`/`delete()`) are omitted below — they're implied for every entity. Only behavioral methods are shown.
