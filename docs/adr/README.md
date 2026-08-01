@@ -14,3 +14,4 @@ This directory records the significant architecture decisions for the Fantasy Le
 | [0008](0008-jwt-authentication.md) | JWT authentication with revocable refresh tokens | Accepted |
 | [0009](0009-rest-api-conventions.md) | REST API conventions (DTOs, ProblemDetail errors, /api/v1, custom pagination envelope) | Accepted |
 | [0010](0010-infra-and-deployment.md) | CI, containerization, secrets, and deployment target (GitHub Actions, Buildpacks, Render) | Accepted |
+| [0011](0011-testing-strategy.md) | Testing strategy (test pyramid, Testcontainers, Surefire/Failsafe split, coverage report-only) | Accepted |
