@@ -337,3 +337,8 @@ Default fantasy points, weighted by position. Bench players never score; a start
 | Own goal | -2 | -2 | -2 | -2 |
 
 The captain's total points for the gameweek are doubled.
+
+
+# Squad Rules
+
+Each fantasy squad has 15 players: 2 goalkeepers, 5 defenders, 5 midfielders, 3 forwards, all within a shared budget. For each gameweek's GameweekLineup, the starting XI is chosen from that squad in a valid formation: exactly 1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD, totaling 11 starters (the remaining 4 are bench and never score, per the Scoring Rules above). One starter is designated captain on the GameweekLineup and their points are doubled for that gameweek.
