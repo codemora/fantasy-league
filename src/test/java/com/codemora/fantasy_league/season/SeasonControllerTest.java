@@ -159,4 +159,27 @@ class SeasonControllerTest {
                         .content("{\"teamId\":5}"))
                 .andExpect(status().isConflict());
     }
+
+    @Test
+    void removeEntrantSuccessReturns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/leagues/1/seasons/10/entrants/5"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void removeEntrantNotEnteredReturns404() throws Exception {
+        doThrow(new NotFoundException("Team 5 is not entered in season 10")).when(seasonService).removeEntrant(1L, 10L, 5L);
+
+        mockMvc.perform(delete("/api/v1/leagues/1/seasons/10/entrants/5"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void removeEntrantOnceFixturesExistReturns409() throws Exception {
+        doThrow(new ConflictException("Season 10 already has fixtures generated -- teams can't be removed now"))
+                .when(seasonService).removeEntrant(1L, 10L, 5L);
+
+        mockMvc.perform(delete("/api/v1/leagues/1/seasons/10/entrants/5"))
+                .andExpect(status().isConflict());
+    }
 }

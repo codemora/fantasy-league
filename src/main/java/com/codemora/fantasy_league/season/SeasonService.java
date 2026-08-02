@@ -118,6 +118,19 @@ public class SeasonService {
         return new SeasonEntrantResponse(entrant.getId(), entrant.getSeasonId(), entrant.getTeamId());
     }
 
+    @Transactional
+    public void removeEntrant(Long leagueId, Long seasonId, Long teamId) {
+        findInLeague(leagueId, seasonId);
+        SeasonEntrant entrant = seasonEntrantRepository.findBySeasonIdAndTeamId(seasonId, teamId)
+                .orElseThrow(() -> new NotFoundException("Team " + teamId + " is not entered in season " + seasonId));
+        if (seasonRepository.hasAnyFixtures(seasonId)) {
+            log.warn("season_entrant_removal_conflict season_id={} team_id={} reason=has_fixtures", seasonId, teamId);
+            throw new ConflictException("Season " + seasonId + " already has fixtures generated -- teams can't be removed now");
+        }
+        seasonEntrantRepository.delete(entrant);
+        log.info("season_entrant_removed season_id={} team_id={}", seasonId, teamId);
+    }
+
     /**
      * Addressing a season through a mismatched leagueId in the path (a season
      * that exists, but under a different league) is treated as not-found, same

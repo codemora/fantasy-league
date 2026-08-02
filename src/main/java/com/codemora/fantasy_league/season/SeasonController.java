@@ -63,4 +63,13 @@ public class SeasonController {
             @PathVariable Long leagueId, @PathVariable Long id, @Valid @RequestBody AddSeasonEntrantRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(seasonService.addEntrant(leagueId, id, request));
     }
+
+    @DeleteMapping("/{id}/entrants/{teamId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Remove a team from a season", description = "ADMIN only. 409 if the season already has fixtures generated.")
+    public ResponseEntity<Void> removeEntrant(
+            @PathVariable Long leagueId, @PathVariable Long id, @PathVariable Long teamId) {
+        seasonService.removeEntrant(leagueId, id, teamId);
+        return ResponseEntity.noContent().build();
+    }
 }

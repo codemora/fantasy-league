@@ -62,4 +62,12 @@ class SeasonEntrantRepositoryTest {
         assertThat(seasonEntrantRepository.existsBySeasonIdAndTeamId(seasonId, 999L)).isFalse();
         assertThat(seasonEntrantRepository.countBySeasonId(seasonId)).isEqualTo(2L);
     }
+
+    @Test
+    void findBySeasonIdAndTeamIdReturnsTheMatchingRowOnly() {
+        seasonEntrantRepository.save(SeasonEntrant.builder().seasonId(seasonId).teamId(arsenalId).build());
+
+        assertThat(seasonEntrantRepository.findBySeasonIdAndTeamId(seasonId, arsenalId)).isPresent();
+        assertThat(seasonEntrantRepository.findBySeasonIdAndTeamId(seasonId, chelseaId)).isEmpty();
+    }
 }
