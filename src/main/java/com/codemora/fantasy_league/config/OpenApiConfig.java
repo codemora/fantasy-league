@@ -3,6 +3,7 @@ package com.codemora.fantasy_league.config;
 import java.util.Arrays;
 
 import org.springdoc.core.customizers.OperationCustomizer;
+import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -108,6 +109,31 @@ public class OpenApiConfig {
             }
             return operation;
         };
+    }
+
+    /**
+     * Swagger UI shows a group dropdown once more than one GroupedOpenApi bean
+     * exists, splitting the single combined spec into an admin-only view and a
+     * regular-user view -- the same @PreAuthorize check the error customizer
+     * above uses to decide whether an operation can 403, reused here to decide
+     * which group an operation belongs to.
+     */
+    @Bean
+    public GroupedOpenApi adminApi() {
+        return GroupedOpenApi.builder()
+                .group("admin")
+                .displayName("Admin")
+                .addOpenApiMethodFilter(method -> method.isAnnotationPresent(PreAuthorize.class))
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi userApi() {
+        return GroupedOpenApi.builder()
+                .group("user")
+                .displayName("User")
+                .addOpenApiMethodFilter(method -> !method.isAnnotationPresent(PreAuthorize.class))
+                .build();
     }
 
     private ApiResponse problemResponse(String description, String schemaName) {
