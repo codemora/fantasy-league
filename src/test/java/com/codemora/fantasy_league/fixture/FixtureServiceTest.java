@@ -31,6 +31,7 @@ import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonEntrant;
 import com.codemora.fantasy_league.season.SeasonEntrantRepository;
 import com.codemora.fantasy_league.season.SeasonRepository;
+import com.codemora.fantasy_league.team.TeamRepository;
 
 @ExtendWith(MockitoExtension.class)
 class FixtureServiceTest {
@@ -43,13 +44,15 @@ class FixtureServiceTest {
     private GameweekRepository gameweekRepository;
     @Mock
     private FixtureRepository fixtureRepository;
+    @Mock
+    private TeamRepository teamRepository;
 
     // Real instance: pure, deterministic, already covered by its own thorough
     // test -- exercising it for real here is more meaningful than mocking it.
     private final RoundRobinScheduler roundRobinScheduler = new RoundRobinScheduler();
 
     private FixtureService fixtureService() {
-        return new FixtureService(seasonRepository, seasonEntrantRepository, gameweekRepository, fixtureRepository, roundRobinScheduler);
+        return new FixtureService(seasonRepository, seasonEntrantRepository, gameweekRepository, fixtureRepository, roundRobinScheduler, teamRepository);
     }
 
     private Season fourTeamSeason() {
@@ -234,5 +237,45 @@ class FixtureServiceTest {
 
         assertThatThrownBy(() -> fixtureService().addResult(1L, 10L, 999L, new AddFixtureResultRequest(1, 0)))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void findByTeamReturnsAllFixturesSortedByStartDateTimeWhenStatusIsAll() {
+        when(teamRepository.existsById(101L)).thenReturn(true);
+        Fixture later = unplayedFixture().toBuilder().id(501L).startDateTime(LocalDateTime.of(2025, 9, 1, 15, 0)).build();
+        Fixture earlier = unplayedFixture().toBuilder().id(502L).startDateTime(LocalDateTime.of(2025, 8, 1, 15, 0)).build();
+        when(fixtureRepository.findByTeamId(101L)).thenReturn(List.of(later, earlier));
+
+        List<FixtureResponse> response = fixtureService().findByTeam(101L, "all");
+
+        assertThat(response).extracting(FixtureResponse::id).containsExactly(502L, 501L);
+    }
+
+    @Test
+    void findByTeamFiltersByPlayedStatus() {
+        when(teamRepository.existsById(101L)).thenReturn(true);
+        Fixture played = unplayedFixture().toBuilder().id(503L).played(true).build();
+        when(fixtureRepository.findByTeamIdAndPlayed(101L, true)).thenReturn(List.of(played));
+
+        List<FixtureResponse> response = fixtureService().findByTeam(101L, "played");
+
+        assertThat(response).extracting(FixtureResponse::id).containsExactly(503L);
+    }
+
+    @Test
+    void findByTeamFiltersByUpcomingStatus() {
+        when(teamRepository.existsById(101L)).thenReturn(true);
+        when(fixtureRepository.findByTeamIdAndPlayed(101L, false)).thenReturn(List.of(unplayedFixture()));
+
+        List<FixtureResponse> response = fixtureService().findByTeam(101L, "upcoming");
+
+        assertThat(response).extracting(FixtureResponse::id).containsExactly(500L);
+    }
+
+    @Test
+    void findByTeamRejectsUnknownTeam() {
+        when(teamRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> fixtureService().findByTeam(999L, "all")).isInstanceOf(NotFoundException.class);
     }
 }
