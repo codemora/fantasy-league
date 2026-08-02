@@ -86,4 +86,27 @@ class SeasonRepositoryTest {
 
         assertThat(seasonRepository.countEntrants(season.getId())).isEqualTo(2L);
     }
+
+    @Test
+    void usageChecksAreAllFalseForAnUnusedSeason() {
+        Season season = seasonRepository.save(
+                Season.builder().leagueId(leagueId).period("2025-26").teamLimit(20).startingBudget(1000).build());
+
+        // Exercises the actual native SQL against H2 -- same rationale as
+        // TeamRepositoryTest's equivalent test.
+        assertThat(seasonRepository.hasAnyFixtures(season.getId())).isFalse();
+        assertThat(seasonRepository.hasAnyFantasySquads(season.getId())).isFalse();
+    }
+
+    @Test
+    void hasAnyFantasySquadsIsTrueOnceASquadExists() {
+        Season season = seasonRepository.save(
+                Season.builder().leagueId(leagueId).period("2025-26").teamLimit(20).startingBudget(1000).build());
+
+        jdbcTemplate.update(
+                "INSERT INTO fantasy_squad (user_id, season_id, bank_balance, free_transfers) VALUES (?, ?, ?, ?)",
+                adminId, season.getId(), 1000, 1);
+
+        assertThat(seasonRepository.hasAnyFantasySquads(season.getId())).isTrue();
+    }
 }
