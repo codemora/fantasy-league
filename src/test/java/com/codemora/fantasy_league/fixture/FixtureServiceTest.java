@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,9 +20,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
+import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
 import com.codemora.fantasy_league.gameweek.Gameweek;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
+import com.codemora.fantasy_league.gameweek.GameweekStatus;
 import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonEntrant;
 import com.codemora.fantasy_league.season.SeasonEntrantRepository;
@@ -119,5 +123,81 @@ class FixtureServiceTest {
                 List.of(SeasonEntrant.builder().id(1L).seasonId(10L).teamId(101L).build()));
 
         assertThatThrownBy(() -> fixtureService().generate(1L, 10L)).isInstanceOf(ConflictException.class);
+    }
+
+    private Fixture unplayedFixture() {
+        return Fixture.builder()
+                .id(500L)
+                .seasonId(10L)
+                .gameweekId(200L)
+                .homeTeamId(101L)
+                .awayTeamId(102L)
+                .played(false)
+                .startDateTime(LocalDateTime.of(2025, 8, 1, 15, 0))
+                .simulationSeed(42L)
+                .build();
+    }
+
+    private Gameweek upcomingGameweek() {
+        return Gameweek.builder()
+                .id(200L)
+                .seasonId(10L)
+                .number(1)
+                .deadlineDateTime(LocalDateTime.now().plusDays(3))
+                .status(GameweekStatus.UPCOMING)
+                .build();
+    }
+
+    @Test
+    void updateSavesNewStartDateTime() {
+        LocalDateTime newTime = LocalDateTime.of(2025, 8, 2, 17, 30);
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(500L)).thenReturn(Optional.of(unplayedFixture()));
+        when(gameweekRepository.findById(200L)).thenReturn(Optional.of(upcomingGameweek()));
+        when(fixtureRepository.save(any(Fixture.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        FixtureResponse response = fixtureService().update(1L, 10L, 500L, new EditFixtureRequest(newTime));
+
+        assertThat(response.startDateTime()).isEqualTo(newTime);
+    }
+
+    @Test
+    void updateRejectsUnknownFixture() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fixtureService().update(1L, 10L, 999L, new EditFixtureRequest(LocalDateTime.now())))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void updateRejectsFixtureInADifferentSeason() {
+        Fixture otherSeasonFixture = unplayedFixture().toBuilder().seasonId(99L).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(500L)).thenReturn(Optional.of(otherSeasonFixture));
+
+        assertThatThrownBy(() -> fixtureService().update(1L, 10L, 500L, new EditFixtureRequest(LocalDateTime.now())))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void updateRejectsAlreadyPlayedFixture() {
+        Fixture playedFixture = unplayedFixture().toBuilder().played(true).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(500L)).thenReturn(Optional.of(playedFixture));
+
+        assertThatThrownBy(() -> fixtureService().update(1L, 10L, 500L, new EditFixtureRequest(LocalDateTime.now())))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void updateRejectsOnceGameweekDeadlineHasPassed() {
+        Gameweek pastGameweek = upcomingGameweek().toBuilder().deadlineDateTime(LocalDateTime.now().minusDays(1)).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(500L)).thenReturn(Optional.of(unplayedFixture()));
+        when(gameweekRepository.findById(200L)).thenReturn(Optional.of(pastGameweek));
+
+        assertThatThrownBy(() -> fixtureService().update(1L, 10L, 500L, new EditFixtureRequest(LocalDateTime.now())))
+                .isInstanceOf(ConflictException.class);
     }
 }
