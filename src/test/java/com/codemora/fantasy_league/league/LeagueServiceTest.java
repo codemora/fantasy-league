@@ -84,4 +84,31 @@ class LeagueServiceTest {
         assertThatThrownBy(() -> leagueService().update(1L, new UpdateLeagueRequest("La Liga")))
                 .isInstanceOf(ConflictException.class);
     }
+
+    @Test
+    void deleteRemovesAnUnusedLeague() {
+        League existing = League.builder().id(1L).createdByUserId(7L).name("Premier League").build();
+        when(leagueRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(leagueRepository.hasAnySeasons(1L)).thenReturn(false);
+
+        leagueService().delete(1L);
+
+        org.mockito.Mockito.verify(leagueRepository).delete(existing);
+    }
+
+    @Test
+    void deleteRejectsUnknownId() {
+        when(leagueRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> leagueService().delete(99L)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void deleteRejectsLeagueWithSeasons() {
+        League existing = League.builder().id(1L).createdByUserId(7L).name("Premier League").build();
+        when(leagueRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(leagueRepository.hasAnySeasons(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> leagueService().delete(1L)).isInstanceOf(ConflictException.class);
+    }
 }
