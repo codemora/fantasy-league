@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.codemora.fantasy_league.fixture.dto.AddFixtureResultRequest;
 import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
@@ -47,5 +48,15 @@ public class FixtureController {
             @PathVariable Long leagueId, @PathVariable Long seasonId, @PathVariable Long id,
             @Valid @RequestBody EditFixtureRequest request) {
         return ResponseEntity.ok(fixtureService.update(leagueId, seasonId, id, request));
+    }
+
+    @PostMapping("/{id}/result")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Record a fixture's result", description = "ADMIN only. Can be called again to correct a "
+            + "previously recorded result.")
+    public ResponseEntity<FixtureResponse> addResult(
+            @PathVariable Long leagueId, @PathVariable Long seasonId, @PathVariable Long id,
+            @Valid @RequestBody AddFixtureResultRequest request) {
+        return ResponseEntity.ok(fixtureService.addResult(leagueId, seasonId, id, request));
     }
 }
