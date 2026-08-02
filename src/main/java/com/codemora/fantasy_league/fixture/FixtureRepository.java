@@ -14,6 +14,8 @@ public interface FixtureRepository extends JpaRepository<Fixture, Long> {
 
     List<Fixture> findBySeasonIdAndGameweekIdAndPlayedFalse(Long seasonId, Long gameweekId);
 
+    List<Fixture> findByGameweekId(Long gameweekId);
+
     @Query("SELECT f FROM Fixture f WHERE f.homeTeamId = :teamId OR f.awayTeamId = :teamId")
     List<Fixture> findByTeamId(@Param("teamId") Long teamId);
 
