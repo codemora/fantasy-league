@@ -220,4 +220,44 @@ class SeasonServiceTest {
         assertThatThrownBy(() -> seasonService().addEntrant(1L, 10L, new AddSeasonEntrantRequest(5L)))
                 .isInstanceOf(ConflictException.class);
     }
+
+    @Test
+    void removeEntrantDeletesTheEntrantRow() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        SeasonEntrant entrant = SeasonEntrant.builder().id(100L).seasonId(10L).teamId(5L).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonEntrantRepository.findBySeasonIdAndTeamId(10L, 5L)).thenReturn(Optional.of(entrant));
+        when(seasonRepository.hasAnyFixtures(10L)).thenReturn(false);
+
+        seasonService().removeEntrant(1L, 10L, 5L);
+
+        org.mockito.Mockito.verify(seasonEntrantRepository).delete(entrant);
+    }
+
+    @Test
+    void removeEntrantRejectsUnknownSeason() {
+        when(seasonRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> seasonService().removeEntrant(1L, 99L, 5L)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void removeEntrantRejectsTeamNotEntered() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonEntrantRepository.findBySeasonIdAndTeamId(10L, 5L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> seasonService().removeEntrant(1L, 10L, 5L)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void removeEntrantRejectsOnceFixturesExist() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        SeasonEntrant entrant = SeasonEntrant.builder().id(100L).seasonId(10L).teamId(5L).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonEntrantRepository.findBySeasonIdAndTeamId(10L, 5L)).thenReturn(Optional.of(entrant));
+        when(seasonRepository.hasAnyFixtures(10L)).thenReturn(true);
+
+        assertThatThrownBy(() -> seasonService().removeEntrant(1L, 10L, 5L)).isInstanceOf(ConflictException.class);
+    }
 }
