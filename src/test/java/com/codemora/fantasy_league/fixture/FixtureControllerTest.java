@@ -2,6 +2,7 @@ package com.codemora.fantasy_league.fixture;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -23,6 +24,7 @@ import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
+import com.codemora.fantasy_league.fixture.dto.SimulateFixturesResponse;
 
 /**
  * addFilters = false: see TeamControllerTest -- same rationale.
@@ -142,5 +144,31 @@ class FixtureControllerTest {
                         .content("{\"homeTeamScore\":-1,\"awayTeamScore\":0}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("homeTeamScore"));
+    }
+
+    @Test
+    void simulateSuccessReturns200() throws Exception {
+        when(fixtureService.simulate(eq(1L), eq(10L), isNull())).thenReturn(new SimulateFixturesResponse(6));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/fixtures/simulate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fixturesSimulated").value(6));
+    }
+
+    @Test
+    void simulateWithGameweekIdPassesItThrough() throws Exception {
+        when(fixtureService.simulate(eq(1L), eq(10L), eq(200L))).thenReturn(new SimulateFixturesResponse(2));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/fixtures/simulate").param("gameweekId", "200"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fixturesSimulated").value(2));
+    }
+
+    @Test
+    void simulateUnknownSeasonReturns404() throws Exception {
+        when(fixtureService.simulate(eq(1L), eq(99L), isNull())).thenThrow(new NotFoundException("No season with id 99"));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/99/fixtures/simulate"))
+                .andExpect(status().isNotFound());
     }
 }

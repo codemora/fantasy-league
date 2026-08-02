@@ -13,7 +13,9 @@ import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
+import com.codemora.fantasy_league.player.dto.PlayerProfileResponse;
 import com.codemora.fantasy_league.player.dto.PlayerResponse;
+import com.codemora.fantasy_league.team.Team;
 import com.codemora.fantasy_league.team.TeamRepository;
 
 import lombok.extern.slf4j.Slf4j;
@@ -38,16 +40,19 @@ public class PlayerService {
 
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
+    private final PlayerPerformanceRepository playerPerformanceRepository;
     private final PlayerNameGenerator nameGenerator;
     private final CurrentUserProvider currentUserProvider;
 
     public PlayerService(
             TeamRepository teamRepository,
             PlayerRepository playerRepository,
+            PlayerPerformanceRepository playerPerformanceRepository,
             PlayerNameGenerator nameGenerator,
             CurrentUserProvider currentUserProvider) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
+        this.playerPerformanceRepository = playerPerformanceRepository;
         this.nameGenerator = nameGenerator;
         this.currentUserProvider = currentUserProvider;
     }
@@ -101,6 +106,30 @@ public class PlayerService {
             throw new NotFoundException("No team with id " + teamId);
         }
         return playerRepository.findByTeamId(teamId).stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Cumulative (all-time, not season-scoped) stats aggregated from every
+     * PlayerPerformance row recorded for this player -- #28 asks for
+     * "cumulative season stats" without specifying a season filter, and a
+     * player only ever belongs to one team at a time, so all-time is the
+     * simplest reading that still matches "cumulative."
+     */
+    public PlayerProfileResponse findProfile(Long playerId) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new NotFoundException("No player with id " + playerId));
+        Team team = teamRepository.findById(player.getTeamId())
+                .orElseThrow(() -> new NotFoundException("No team with id " + player.getTeamId()));
+        List<PlayerPerformance> performances = playerPerformanceRepository.findByPlayerId(playerId);
+
+        int appearances = (int) performances.stream().filter(p -> p.getMinutesPlayed() > 0).count();
+        int goals = performances.stream().mapToInt(PlayerPerformance::getGoals).sum();
+        int assists = performances.stream().mapToInt(PlayerPerformance::getAssists).sum();
+        int cleanSheets = (int) performances.stream().filter(PlayerPerformance::isCleanSheet).count();
+
+        return new PlayerProfileResponse(
+                player.getId(), team.getId(), team.getName(), player.getName(), player.getPosition(), player.getMarketValue(),
+                appearances, goals, assists, cleanSheets);
     }
 
     private PlayerResponse toResponse(Player player) {
