@@ -21,6 +21,7 @@ import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.league.LeagueRepository;
+import com.codemora.fantasy_league.scoringrule.ScoringRuleService;
 import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
 import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
@@ -43,6 +44,8 @@ class SeasonServiceTest {
     private TeamRepository teamRepository;
     @Mock
     private CurrentUserProvider currentUserProvider;
+    @Mock
+    private ScoringRuleService scoringRuleService;
 
     // Real instance: trivial, deterministic, no external deps -- exercising the
     // actual candidate-name logic is more meaningful than mocking it out.
@@ -53,7 +56,8 @@ class SeasonServiceTest {
 
     private SeasonService seasonService() {
         return new SeasonService(
-                seasonRepository, leagueRepository, seasonEntrantRepository, teamRepository, teamNameGenerator, currentUserProvider);
+                seasonRepository, leagueRepository, seasonEntrantRepository, teamRepository, teamNameGenerator,
+                currentUserProvider, scoringRuleService);
     }
 
     @Test
@@ -64,6 +68,7 @@ class SeasonServiceTest {
             s.setId(10L);
             return s;
         });
+        when(currentUserProvider.getUserId()).thenReturn(7L);
 
         SeasonResponse response = seasonService().create(
                 1L, new CreateSeasonRequest("2025-26", 20, 1000, true, LocalDate.of(2025, 8, 1), LocalDate.of(2026, 5, 24)));
@@ -74,6 +79,7 @@ class SeasonServiceTest {
         assertThat(response.teamLimit()).isEqualTo(20);
         assertThat(response.startingBudget()).isEqualTo(1000);
         assertThat(response.doubleLeg()).isTrue();
+        verify(scoringRuleService).seedDefaults(10L, 7L);
     }
 
     @Test

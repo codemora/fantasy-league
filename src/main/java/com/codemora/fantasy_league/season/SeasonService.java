@@ -10,6 +10,7 @@ import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.league.LeagueRepository;
+import com.codemora.fantasy_league.scoringrule.ScoringRuleService;
 import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
 import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
@@ -31,6 +32,7 @@ public class SeasonService {
     private final TeamRepository teamRepository;
     private final SimulatedTeamNameGenerator teamNameGenerator;
     private final CurrentUserProvider currentUserProvider;
+    private final ScoringRuleService scoringRuleService;
 
     public SeasonService(
             SeasonRepository seasonRepository,
@@ -38,13 +40,15 @@ public class SeasonService {
             SeasonEntrantRepository seasonEntrantRepository,
             TeamRepository teamRepository,
             SimulatedTeamNameGenerator teamNameGenerator,
-            CurrentUserProvider currentUserProvider) {
+            CurrentUserProvider currentUserProvider,
+            ScoringRuleService scoringRuleService) {
         this.seasonRepository = seasonRepository;
         this.leagueRepository = leagueRepository;
         this.seasonEntrantRepository = seasonEntrantRepository;
         this.teamRepository = teamRepository;
         this.teamNameGenerator = teamNameGenerator;
         this.currentUserProvider = currentUserProvider;
+        this.scoringRuleService = scoringRuleService;
     }
 
     @Transactional
@@ -62,6 +66,7 @@ public class SeasonService {
                 .endDate(request.endDate())
                 .build();
         season = seasonRepository.save(season);
+        scoringRuleService.seedDefaults(season.getId(), currentUserProvider.getUserId());
         log.info("season_created id={} league_id={} period={}", season.getId(), season.getLeagueId(), season.getPeriod());
         return toResponse(season);
     }
