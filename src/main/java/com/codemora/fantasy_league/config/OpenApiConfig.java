@@ -113,17 +113,20 @@ public class OpenApiConfig {
 
     /**
      * Swagger UI shows a group dropdown once more than one GroupedOpenApi bean
-     * exists, splitting the single combined spec into an admin-only view and a
-     * regular-user view -- the same @PreAuthorize check the error customizer
-     * above uses to decide whether an operation can 403, reused here to decide
-     * which group an operation belongs to.
+     * exists. Every @PreAuthorize in this codebase is hasRole('ADMIN') -- there's
+     * no USER-exclusive restriction anywhere -- so an ADMIN account can call
+     * everything a USER account can, plus its own guarded operations. The groups
+     * reflect that: "admin" is every operation reachable with an ADMIN token
+     * (pathsToMatch("/**") -- GroupedOpenApi requires at least one filter, and
+     * "everything" is the only one that means "unfiltered"), "user" is the
+     * subset reachable without one.
      */
     @Bean
     public GroupedOpenApi adminApi() {
         return GroupedOpenApi.builder()
                 .group("admin")
                 .displayName("Admin")
-                .addOpenApiMethodFilter(method -> method.isAnnotationPresent(PreAuthorize.class))
+                .pathsToMatch("/**")
                 .build();
     }
 
