@@ -1,0 +1,34 @@
+package com.codemora.fantasy_league.league;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Table(name = "league")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class League {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "league_id")
+    private Long id;
+
+    @Column(name = "created_by_user_id", nullable = false)
+    private Long createdByUserId;
+
+    @Column(nullable = false, unique = true, length = 128)
+    private String name;
+}
