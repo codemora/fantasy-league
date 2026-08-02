@@ -49,4 +49,13 @@ class LeagueRepositoryTest {
                         League.builder().createdByUserId(adminId).name("Premier League").build()))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
+
+    @Test
+    void existsByNameAndIdNotExcludesTheGivenLeagueButNotOthers() {
+        League premierLeague = leagueRepository.save(League.builder().createdByUserId(adminId).name("Premier League").build());
+        leagueRepository.save(League.builder().createdByUserId(adminId).name("La Liga").build());
+
+        assertThat(leagueRepository.existsByNameAndIdNot("Premier League", premierLeague.getId())).isFalse();
+        assertThat(leagueRepository.existsByNameAndIdNot("La Liga", premierLeague.getId())).isTrue();
+    }
 }
