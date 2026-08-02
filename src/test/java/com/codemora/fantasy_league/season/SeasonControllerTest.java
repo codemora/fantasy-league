@@ -18,9 +18,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
 import com.codemora.fantasy_league.auth.JwtService;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 
@@ -181,5 +184,23 @@ class SeasonControllerTest {
 
         mockMvc.perform(delete("/api/v1/leagues/1/seasons/10/entrants/5"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void generateEntrantsSuccessReturns201WithGeneratedTeams() throws Exception {
+        when(seasonService.generateEntrants(1L, 10L))
+                .thenReturn(List.of(new GeneratedEntrantResponse(200L, 100L, "North United")));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/entrants/generate"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].teamName").value("North United"));
+    }
+
+    @Test
+    void generateEntrantsUnknownSeasonReturns404() throws Exception {
+        when(seasonService.generateEntrants(1L, 99L)).thenThrow(new NotFoundException("No season with id 99"));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/99/entrants/generate"))
+                .andExpect(status().isNotFound());
     }
 }
