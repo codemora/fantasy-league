@@ -1,6 +1,7 @@
 package com.codemora.fantasy_league.fixture;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -20,6 +21,7 @@ import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonEntrant;
 import com.codemora.fantasy_league.season.SeasonEntrantRepository;
 import com.codemora.fantasy_league.season.SeasonRepository;
+import com.codemora.fantasy_league.team.TeamRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -32,18 +34,21 @@ public class FixtureService {
     private final GameweekRepository gameweekRepository;
     private final FixtureRepository fixtureRepository;
     private final RoundRobinScheduler roundRobinScheduler;
+    private final TeamRepository teamRepository;
 
     public FixtureService(
             SeasonRepository seasonRepository,
             SeasonEntrantRepository seasonEntrantRepository,
             GameweekRepository gameweekRepository,
             FixtureRepository fixtureRepository,
-            RoundRobinScheduler roundRobinScheduler) {
+            RoundRobinScheduler roundRobinScheduler,
+            TeamRepository teamRepository) {
         this.seasonRepository = seasonRepository;
         this.seasonEntrantRepository = seasonEntrantRepository;
         this.gameweekRepository = gameweekRepository;
         this.fixtureRepository = fixtureRepository;
         this.roundRobinScheduler = roundRobinScheduler;
+        this.teamRepository = teamRepository;
     }
 
     /**
@@ -147,6 +152,27 @@ public class FixtureService {
         log.info("fixture_result_recorded id={} home_score={} away_score={}",
                 saved.getId(), saved.getHomeTeamScore(), saved.getAwayTeamScore());
         return toResponse(saved);
+    }
+
+    /**
+     * A team can be entered across multiple league seasons via SeasonEntrant,
+     * so this deliberately isn't scoped to one league/season the way the rest
+     * of this service is -- "all" matches (#5's status filter) span every
+     * season the team has played in.
+     */
+    public List<FixtureResponse> findByTeam(Long teamId, String status) {
+        if (!teamRepository.existsById(teamId)) {
+            throw new NotFoundException("No team with id " + teamId);
+        }
+        List<Fixture> fixtures = switch (status) {
+            case "played" -> fixtureRepository.findByTeamIdAndPlayed(teamId, true);
+            case "upcoming" -> fixtureRepository.findByTeamIdAndPlayed(teamId, false);
+            default -> fixtureRepository.findByTeamId(teamId);
+        };
+        return fixtures.stream()
+                .sorted(Comparator.comparing(Fixture::getStartDateTime))
+                .map(this::toResponse)
+                .toList();
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.codemora.fantasy_league.team;
 
+import java.util.List;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.codemora.fantasy_league.common.PageResponse;
+import com.codemora.fantasy_league.fixture.FixtureService;
+import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.team.dto.CreateTeamRequest;
 import com.codemora.fantasy_league.team.dto.TeamResponse;
 import com.codemora.fantasy_league.team.dto.UpdateTeamRequest;
@@ -30,9 +34,11 @@ import jakarta.validation.Valid;
 public class TeamController {
 
     private final TeamService teamService;
+    private final FixtureService fixtureService;
 
-    public TeamController(TeamService teamService) {
+    public TeamController(TeamService teamService, FixtureService fixtureService) {
         this.teamService = teamService;
+        this.fixtureService = fixtureService;
     }
 
     @PostMapping
@@ -69,5 +75,13 @@ public class TeamController {
             @RequestParam(required = false) String name,
             @PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(teamService.search(name, pageable));
+    }
+
+    @GetMapping("/{id}/fixtures")
+    @Operation(summary = "View a team's fixtures", description = "Optionally filter with status=played or status=upcoming.")
+    public ResponseEntity<List<FixtureResponse>> fixtures(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "all") String status) {
+        return ResponseEntity.ok(fixtureService.findByTeam(id, status));
     }
 }
