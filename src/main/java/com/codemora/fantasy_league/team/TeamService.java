@@ -55,6 +55,26 @@ public class TeamService {
         return toResponse(team);
     }
 
+    @Transactional
+    public void delete(Long id) {
+        Team team = teamRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("No team with id " + id));
+        if (teamRepository.isEnteredInAnySeason(id)) {
+            log.warn("team_deletion_conflict id={} reason=entered_in_a_season", id);
+            throw new ConflictException("Team '" + team.getName() + "' has been entered into a season and can't be deleted");
+        }
+        if (teamRepository.hasAnyPlayers(id)) {
+            log.warn("team_deletion_conflict id={} reason=has_players", id);
+            throw new ConflictException("Team '" + team.getName() + "' has players and can't be deleted");
+        }
+        if (teamRepository.hasAnyFixtures(id)) {
+            log.warn("team_deletion_conflict id={} reason=has_fixtures", id);
+            throw new ConflictException("Team '" + team.getName() + "' has fixtures and can't be deleted");
+        }
+        teamRepository.delete(team);
+        log.info("team_deleted id={} name={}", team.getId(), team.getName());
+    }
+
     private TeamResponse toResponse(Team team) {
         return new TeamResponse(team.getId(), team.getName(), team.getSlogan());
     }

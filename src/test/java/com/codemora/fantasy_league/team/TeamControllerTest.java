@@ -2,7 +2,9 @@ package com.codemora.fantasy_league.team;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -98,5 +100,27 @@ class TeamControllerTest {
                         .content("{\"name\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("name"));
+    }
+
+    @Test
+    void deleteSuccessReturns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/teams/1"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteUnknownIdReturns404() throws Exception {
+        doThrow(new NotFoundException("No team with id 99")).when(teamService).delete(99L);
+
+        mockMvc.perform(delete("/api/v1/teams/99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteTeamInUseReturns409() throws Exception {
+        doThrow(new ConflictException("Team 'Arsenal' has players and can't be deleted")).when(teamService).delete(1L);
+
+        mockMvc.perform(delete("/api/v1/teams/1"))
+                .andExpect(status().isConflict());
     }
 }
