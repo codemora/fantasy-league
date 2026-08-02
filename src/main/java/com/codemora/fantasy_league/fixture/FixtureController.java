@@ -8,12 +8,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.codemora.fantasy_league.fixture.dto.AddFixtureResultRequest;
 import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
+import com.codemora.fantasy_league.fixture.dto.SimulateFixturesResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -58,5 +60,16 @@ public class FixtureController {
             @PathVariable Long leagueId, @PathVariable Long seasonId, @PathVariable Long id,
             @Valid @RequestBody AddFixtureResultRequest request) {
         return ResponseEntity.ok(fixtureService.addResult(leagueId, seasonId, id, request));
+    }
+
+    @PostMapping("/simulate")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Simulate results for unplayed fixtures", description = "ADMIN only. Simulates every "
+            + "unplayed fixture in the season, or just one gameweek if gameweekId is given, and generates player "
+            + "performance stats for each. Re-running is a no-op once a fixture has been simulated.")
+    public ResponseEntity<SimulateFixturesResponse> simulate(
+            @PathVariable Long leagueId, @PathVariable Long seasonId,
+            @RequestParam(required = false) Long gameweekId) {
+        return ResponseEntity.ok(fixtureService.simulate(leagueId, seasonId, gameweekId));
     }
 }
