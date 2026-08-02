@@ -2,7 +2,9 @@ package com.codemora.fantasy_league.season;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -100,6 +102,29 @@ class SeasonControllerTest {
         mockMvc.perform(put("/api/v1/leagues/1/seasons/10")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"period\":\"2025-26\",\"teamLimit\":10,\"startingBudget\":1000}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void deleteSuccessReturns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/leagues/1/seasons/10"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteUnknownIdReturns404() throws Exception {
+        doThrow(new NotFoundException("No season with id 99")).when(seasonService).delete(1L, 99L);
+
+        mockMvc.perform(delete("/api/v1/leagues/1/seasons/99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteSeasonInUseReturns409() throws Exception {
+        doThrow(new ConflictException("Season '2025-26' has teams entered and can't be deleted"))
+                .when(seasonService).delete(1L, 10L);
+
+        mockMvc.perform(delete("/api/v1/leagues/1/seasons/10"))
                 .andExpect(status().isConflict());
     }
 }

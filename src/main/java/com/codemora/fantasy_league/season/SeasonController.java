@@ -3,6 +3,7 @@ package com.codemora.fantasy_league.season;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -43,5 +44,13 @@ public class SeasonController {
     public ResponseEntity<SeasonResponse> update(
             @PathVariable Long leagueId, @PathVariable Long id, @Valid @RequestBody UpdateSeasonRequest request) {
         return ResponseEntity.ok(seasonService.update(leagueId, id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete a season", description = "ADMIN only. Fails with 409 if the season has entered teams, fixtures, or fantasy squads.")
+    public ResponseEntity<Void> delete(@PathVariable Long leagueId, @PathVariable Long id) {
+        seasonService.delete(leagueId, id);
+        return ResponseEntity.noContent().build();
     }
 }

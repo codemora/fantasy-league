@@ -65,6 +65,25 @@ public class SeasonService {
         return toResponse(season);
     }
 
+    @Transactional
+    public void delete(Long leagueId, Long seasonId) {
+        Season season = findInLeague(leagueId, seasonId);
+        if (seasonRepository.countEntrants(seasonId) > 0) {
+            log.warn("season_deletion_conflict id={} reason=has_entrants", seasonId);
+            throw new ConflictException("Season '" + season.getPeriod() + "' has teams entered and can't be deleted");
+        }
+        if (seasonRepository.hasAnyFixtures(seasonId)) {
+            log.warn("season_deletion_conflict id={} reason=has_fixtures", seasonId);
+            throw new ConflictException("Season '" + season.getPeriod() + "' has fixtures and can't be deleted");
+        }
+        if (seasonRepository.hasAnyFantasySquads(seasonId)) {
+            log.warn("season_deletion_conflict id={} reason=has_fantasy_squads", seasonId);
+            throw new ConflictException("Season '" + season.getPeriod() + "' has fantasy squads and can't be deleted");
+        }
+        seasonRepository.delete(season);
+        log.info("season_deleted id={} league_id={} period={}", season.getId(), season.getLeagueId(), season.getPeriod());
+    }
+
     /**
      * Addressing a season through a mismatched leagueId in the path (a season
      * that exists, but under a different league) is treated as not-found, same

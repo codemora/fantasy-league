@@ -102,4 +102,54 @@ class SeasonServiceTest {
         assertThatThrownBy(() -> seasonService().update(1L, 10L, new UpdateSeasonRequest("2025-26", 10, 1000, false, null, null)))
                 .isInstanceOf(ConflictException.class);
     }
+
+    @Test
+    void deleteRemovesAnUnusedSeason() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonRepository.countEntrants(10L)).thenReturn(0L);
+        when(seasonRepository.hasAnyFixtures(10L)).thenReturn(false);
+        when(seasonRepository.hasAnyFantasySquads(10L)).thenReturn(false);
+
+        seasonService().delete(1L, 10L);
+
+        org.mockito.Mockito.verify(seasonRepository).delete(existing);
+    }
+
+    @Test
+    void deleteRejectsUnknownId() {
+        when(seasonRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> seasonService().delete(1L, 99L)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void deleteRejectsSeasonWithEntrants() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonRepository.countEntrants(10L)).thenReturn(3L);
+
+        assertThatThrownBy(() -> seasonService().delete(1L, 10L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void deleteRejectsSeasonWithFixtures() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonRepository.countEntrants(10L)).thenReturn(0L);
+        when(seasonRepository.hasAnyFixtures(10L)).thenReturn(true);
+
+        assertThatThrownBy(() -> seasonService().delete(1L, 10L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void deleteRejectsSeasonWithFantasySquads() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonRepository.countEntrants(10L)).thenReturn(0L);
+        when(seasonRepository.hasAnyFixtures(10L)).thenReturn(false);
+        when(seasonRepository.hasAnyFantasySquads(10L)).thenReturn(true);
+
+        assertThatThrownBy(() -> seasonService().delete(1L, 10L)).isInstanceOf(ConflictException.class);
+    }
 }
