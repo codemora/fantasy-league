@@ -48,4 +48,13 @@ class TeamRepositoryTest {
         assertThatThrownBy(() -> teamRepository.saveAndFlush(Team.builder().createdByUserId(adminId).name("Arsenal").build()))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
+
+    @Test
+    void existsByNameAndIdNotExcludesTheGivenTeamButNotOthers() {
+        Team arsenal = teamRepository.save(Team.builder().createdByUserId(adminId).name("Arsenal").build());
+        teamRepository.save(Team.builder().createdByUserId(adminId).name("Chelsea").build());
+
+        assertThat(teamRepository.existsByNameAndIdNot("Arsenal", arsenal.getId())).isFalse();
+        assertThat(teamRepository.existsByNameAndIdNot("Chelsea", arsenal.getId())).isTrue();
+    }
 }

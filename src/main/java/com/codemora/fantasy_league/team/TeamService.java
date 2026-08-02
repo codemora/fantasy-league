@@ -4,9 +4,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
+import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.team.dto.CreateTeamRequest;
 import com.codemora.fantasy_league.team.dto.TeamResponse;
+import com.codemora.fantasy_league.team.dto.UpdateTeamRequest;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,6 +37,21 @@ public class TeamService {
                 .build();
         team = teamRepository.save(team);
         log.info("team_created id={} name={} created_by_user_id={}", team.getId(), team.getName(), team.getCreatedByUserId());
+        return toResponse(team);
+    }
+
+    @Transactional
+    public TeamResponse update(Long id, UpdateTeamRequest request) {
+        Team team = teamRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("No team with id " + id));
+        if (teamRepository.existsByNameAndIdNot(request.name(), id)) {
+            log.warn("team_update_conflict id={} name={}", id, request.name());
+            throw new ConflictException("A team named '" + request.name() + "' already exists");
+        }
+        team.setName(request.name());
+        team.setSlogan(request.slogan());
+        team = teamRepository.save(team);
+        log.info("team_updated id={} name={}", team.getId(), team.getName());
         return toResponse(team);
     }
 
