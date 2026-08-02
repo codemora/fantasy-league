@@ -21,6 +21,7 @@ import com.codemora.fantasy_league.fantasysquad.FantasySquadRepository;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayer;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayerRepository;
 import com.codemora.fantasy_league.gameweek.Gameweek;
+import com.codemora.fantasy_league.gameweek.GameweekDeadlineGuard;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.lineup.dto.GameweekLineupResponse;
 import com.codemora.fantasy_league.lineup.dto.LineupSlotResponse;
@@ -32,11 +33,6 @@ import com.codemora.fantasy_league.season.SeasonRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Deadline locking ("can't change your lineup once the gameweek deadline has
- * passed") is deferred to #36, same as squad creation (#29) -- see
- * FantasySquadService for the reasoning.
- */
 @Service
 @Slf4j
 public class LineupService {
@@ -58,6 +54,7 @@ public class LineupService {
     private final PlayerRepository playerRepository;
     private final GameweekLineupRepository gameweekLineupRepository;
     private final LineupSlotRepository lineupSlotRepository;
+    private final GameweekDeadlineGuard gameweekDeadlineGuard;
     private final CurrentUserProvider currentUserProvider;
 
     public LineupService(
@@ -68,6 +65,7 @@ public class LineupService {
             PlayerRepository playerRepository,
             GameweekLineupRepository gameweekLineupRepository,
             LineupSlotRepository lineupSlotRepository,
+            GameweekDeadlineGuard gameweekDeadlineGuard,
             CurrentUserProvider currentUserProvider) {
         this.seasonRepository = seasonRepository;
         this.gameweekRepository = gameweekRepository;
@@ -76,13 +74,15 @@ public class LineupService {
         this.playerRepository = playerRepository;
         this.gameweekLineupRepository = gameweekLineupRepository;
         this.lineupSlotRepository = lineupSlotRepository;
+        this.gameweekDeadlineGuard = gameweekDeadlineGuard;
         this.currentUserProvider = currentUserProvider;
     }
 
     /** Create-or-replace: resubmitting for the same gameweek overwrites the previous selection. */
     @Transactional
     public GameweekLineupResponse submit(Long leagueId, Long seasonId, Long gameweekId, SubmitLineupRequest request) {
-        findGameweekInSeason(leagueId, seasonId, gameweekId);
+        Gameweek gameweek = findGameweekInSeason(leagueId, seasonId, gameweekId);
+        gameweekDeadlineGuard.assertOpenForChanges(gameweek, "change your lineup");
         Long userId = currentUserProvider.getUserId();
         FantasySquad squad = fantasySquadRepository.findByUserIdAndSeasonId(userId, seasonId)
                 .orElseThrow(() -> new NotFoundException("You don't have a fantasy squad for this season"));

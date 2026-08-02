@@ -19,6 +19,7 @@ import com.codemora.fantasy_league.fixture.Fixture;
 import com.codemora.fantasy_league.fixture.FixtureRepository;
 import com.codemora.fantasy_league.gameweek.Gameweek;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
+import com.codemora.fantasy_league.gameweek.GameweekStatus;
 import com.codemora.fantasy_league.lineup.GameweekLineup;
 import com.codemora.fantasy_league.lineup.GameweekLineupRepository;
 import com.codemora.fantasy_league.lineup.LineupRole;
@@ -119,7 +120,8 @@ public class GameweekPointsService {
                 .sum();
 
         return new GameweekPointsResponse(gameweekId, gameweek.getNumber(), breakdown,
-                playerPoints, transferPointsCost, playerPoints - transferPointsCost);
+                playerPoints, transferPointsCost, playerPoints - transferPointsCost,
+                gameweek.getStatus() == GameweekStatus.COMPLETE);
     }
 
     private int rawPoints(Player player, Map<Long, Long> fixtureIdByTeamId, Map<Position, ScoringRule> rulesByPosition) {

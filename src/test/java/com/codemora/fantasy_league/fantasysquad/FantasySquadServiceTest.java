@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +22,10 @@ import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.fantasysquad.dto.CreateFantasySquadRequest;
 import com.codemora.fantasy_league.fantasysquad.dto.FantasySquadResponse;
+import com.codemora.fantasy_league.gameweek.Gameweek;
+import com.codemora.fantasy_league.gameweek.GameweekDeadlineGuard;
+import com.codemora.fantasy_league.gameweek.GameweekRepository;
+import com.codemora.fantasy_league.gameweek.GameweekStatus;
 import com.codemora.fantasy_league.player.Player;
 import com.codemora.fantasy_league.player.PlayerRepository;
 import com.codemora.fantasy_league.season.Season;
@@ -38,10 +43,24 @@ class FantasySquadServiceTest {
     @Mock
     private SquadPlayerRepository squadPlayerRepository;
     @Mock
+    private GameweekRepository gameweekRepository;
+    @Mock
     private CurrentUserProvider currentUserProvider;
 
+    /** Real guard rather than a mock: it's a pure component, so exercise the actual rule. */
     private FantasySquadService fantasySquadService() {
-        return new FantasySquadService(seasonRepository, playerRepository, fantasySquadRepository, squadPlayerRepository, currentUserProvider);
+        return new FantasySquadService(seasonRepository, playerRepository, fantasySquadRepository,
+                squadPlayerRepository, gameweekRepository, new GameweekDeadlineGuard(), currentUserProvider);
+    }
+
+    /** No gameweeks generated yet -- the season hasn't started, so drafting is open. */
+    private void stubSeasonNotStarted() {
+        when(gameweekRepository.findBySeasonIdOrderByNumber(10L)).thenReturn(List.of());
+    }
+
+    private Gameweek gameweek(int number, GameweekStatus status, LocalDateTime deadline) {
+        return Gameweek.builder().id((long) (20 + number)).seasonId(10L).number(number)
+                .deadlineDateTime(deadline).status(status).build();
     }
 
     private Season season() {
@@ -94,6 +113,7 @@ class FantasySquadServiceTest {
     @Test
     void createSavesSquadWithCorrectBankBalance() {
         when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        stubSeasonNotStarted();
         when(currentUserProvider.getUserId()).thenReturn(7L);
         when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(false);
         List<Player> players = validSquad();
@@ -111,6 +131,7 @@ class FantasySquadServiceTest {
     @Test
     void createRejectsWhenUserAlreadyHasASquad() {
         when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        stubSeasonNotStarted();
         when(currentUserProvider.getUserId()).thenReturn(7L);
         when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(true);
 
@@ -121,6 +142,7 @@ class FantasySquadServiceTest {
     @Test
     void createRejectsDuplicatePlayerIds() {
         when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        stubSeasonNotStarted();
         when(currentUserProvider.getUserId()).thenReturn(7L);
         when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(false);
         List<Long> ids = new ArrayList<>(validSquad().stream().map(Player::getId).toList());
@@ -133,6 +155,7 @@ class FantasySquadServiceTest {
     @Test
     void createRejectsUnknownPlayerId() {
         when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        stubSeasonNotStarted();
         when(currentUserProvider.getUserId()).thenReturn(7L);
         when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(false);
         List<Player> players = validSquad();
@@ -145,6 +168,7 @@ class FantasySquadServiceTest {
     @Test
     void createRejectsWrongPositionComposition() {
         when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        stubSeasonNotStarted();
         when(currentUserProvider.getUserId()).thenReturn(7L);
         when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(false);
         List<Player> players = new ArrayList<>(validSquad());
@@ -158,6 +182,7 @@ class FantasySquadServiceTest {
     @Test
     void createRejectsMoreThanThreePlayersFromOneTeam() {
         when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        stubSeasonNotStarted();
         when(currentUserProvider.getUserId()).thenReturn(7L);
         when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(false);
         List<Player> players = new ArrayList<>(validSquad());
@@ -196,6 +221,46 @@ class FantasySquadServiceTest {
 
         assertThatThrownBy(() -> fantasySquadService().create(1L, 10L, requestFor(validSquad())))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void createIsStillAllowedWhileAnyGameweekDeadlineRemains() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findBySeasonIdOrderByNumber(10L)).thenReturn(List.of(
+                gameweek(1, GameweekStatus.COMPLETE, LocalDateTime.now().minusDays(7)),
+                gameweek(2, GameweekStatus.UPCOMING, LocalDateTime.now().plusDays(1))));
+        when(currentUserProvider.getUserId()).thenReturn(7L);
+        when(fantasySquadRepository.existsByUserIdAndSeasonId(7L, 10L)).thenReturn(false);
+        List<Player> players = validSquad();
+        when(playerRepository.findAllById(anyCollection())).thenReturn(players);
+        stubHappyPathSaves();
+
+        // joining mid-season is fine as long as there's still a gameweek to play
+        assertThat(fantasySquadService().create(1L, 10L, requestFor(players)).id()).isEqualTo(500L);
+    }
+
+    @Test
+    void createRejectsOnceEveryGameweekDeadlineHasPassed() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findBySeasonIdOrderByNumber(10L)).thenReturn(List.of(
+                gameweek(1, GameweekStatus.COMPLETE, LocalDateTime.now().minusDays(7)),
+                gameweek(2, GameweekStatus.IN_PROGRESS, LocalDateTime.now().minusDays(1))));
+
+        assertThatThrownBy(() -> fantasySquadService().create(1L, 10L, requestFor(validSquad())))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("no longer accepting new squads");
+    }
+
+    @Test
+    void createRejectsWhenAStaleUpcomingGameweekIsPastItsDeadline() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        // status was never advanced, but the clock has passed it -- still closed
+        when(gameweekRepository.findBySeasonIdOrderByNumber(10L)).thenReturn(List.of(
+                gameweek(1, GameweekStatus.UPCOMING, LocalDateTime.now().minusMinutes(1))));
+
+        assertThatThrownBy(() -> fantasySquadService().create(1L, 10L, requestFor(validSquad())))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("no longer accepting new squads");
     }
 
     @Test
