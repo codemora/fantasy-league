@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.fixture.dto.AddFixtureResultRequest;
 import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
@@ -199,5 +200,39 @@ class FixtureServiceTest {
 
         assertThatThrownBy(() -> fixtureService().update(1L, 10L, 500L, new EditFixtureRequest(LocalDateTime.now())))
                 .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void addResultRecordsScoresAndMarksPlayed() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(500L)).thenReturn(Optional.of(unplayedFixture()));
+        when(fixtureRepository.save(any(Fixture.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        FixtureResponse response = fixtureService().addResult(1L, 10L, 500L, new AddFixtureResultRequest(3, 1));
+
+        assertThat(response.homeTeamScore()).isEqualTo(3);
+        assertThat(response.awayTeamScore()).isEqualTo(1);
+        assertThat(response.played()).isTrue();
+    }
+
+    @Test
+    void addResultCanCorrectAnAlreadyPlayedFixture() {
+        Fixture playedFixture = unplayedFixture().toBuilder().played(true).homeTeamScore(1).awayTeamScore(1).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(500L)).thenReturn(Optional.of(playedFixture));
+        when(fixtureRepository.save(any(Fixture.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        FixtureResponse response = fixtureService().addResult(1L, 10L, 500L, new AddFixtureResultRequest(2, 1));
+
+        assertThat(response.homeTeamScore()).isEqualTo(2);
+    }
+
+    @Test
+    void addResultRejectsUnknownFixture() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fixtureService().addResult(1L, 10L, 999L, new AddFixtureResultRequest(1, 0)))
+                .isInstanceOf(NotFoundException.class);
     }
 }
