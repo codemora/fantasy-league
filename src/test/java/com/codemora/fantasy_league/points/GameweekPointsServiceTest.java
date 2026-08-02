@@ -39,6 +39,8 @@ import com.codemora.fantasy_league.scoringrule.ScoringRule;
 import com.codemora.fantasy_league.scoringrule.ScoringRuleRepository;
 import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonRepository;
+import com.codemora.fantasy_league.transfer.Transfer;
+import com.codemora.fantasy_league.transfer.TransferRepository;
 
 @ExtendWith(MockitoExtension.class)
 class GameweekPointsServiceTest {
@@ -62,12 +64,14 @@ class GameweekPointsServiceTest {
     @Mock
     private ScoringRuleRepository scoringRuleRepository;
     @Mock
+    private TransferRepository transferRepository;
+    @Mock
     private CurrentUserProvider currentUserProvider;
 
     private GameweekPointsService service() {
         return new GameweekPointsService(seasonRepository, gameweekRepository, fantasySquadRepository,
                 gameweekLineupRepository, lineupSlotRepository, playerRepository, playerPerformanceRepository,
-                fixtureRepository, scoringRuleRepository, currentUserProvider);
+                fixtureRepository, scoringRuleRepository, transferRepository, currentUserProvider);
     }
 
     private Season season() {
@@ -119,6 +123,7 @@ class GameweekPointsServiceTest {
                 PlayerPerformance.builder().playerId(1L).fixtureId(9000L).goals(1).minutesPlayed(90).cleanSheet(true).build()));
         when(playerPerformanceRepository.findByPlayerIdAndFixtureId(2L, 9000L)).thenReturn(Optional.of(
                 PlayerPerformance.builder().playerId(2L).fixtureId(9000L).assists(1).minutesPlayed(90).cleanSheet(true).build()));
+        when(transferRepository.findBySquadIdAndGameweekId(500L, 20L)).thenReturn(List.of());
 
         GameweekPointsResponse response = service().findPoints(1L, 10L, 20L);
 
@@ -134,6 +139,36 @@ class GameweekPointsServiceTest {
         PlayerPointsResponse benchBreakdown = response.players().get(2);
         assertThat(benchBreakdown.role()).isEqualTo(LineupRole.BENCH);
         assertThat(benchBreakdown.points()).isEqualTo(0);
+        assertThat(response.transferPointsCost()).isZero();
+        assertThat(response.playerPoints()).isEqualTo(41);
+    }
+
+    @Test
+    void deductsTransferPointsCostFromTheGameweekTotal() {
+        Player player1 = Player.builder().id(1L).teamId(100L).createdByUserId(1L).name("Keeper").position(Position.GK).marketValue(50).build();
+        List<LineupSlot> slots = List.of(
+                LineupSlot.builder().id(1001L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build());
+        stubSeasonGameweekSquadLineup(slots);
+        when(playerRepository.findAllById(anyCollection())).thenReturn(List.of(player1));
+        when(fixtureRepository.findByGameweekId(20L)).thenReturn(List.of(
+                Fixture.builder().id(9000L).seasonId(10L).gameweekId(20L).homeTeamId(100L).awayTeamId(200L)
+                        .played(true).startDateTime(LocalDateTime.now()).simulationSeed(1L).build()));
+        when(scoringRuleRepository.findBySeasonId(10L)).thenReturn(List.of(rule(Position.GK, 10, 3, 4)));
+        when(playerPerformanceRepository.findByPlayerIdAndFixtureId(1L, 9000L)).thenReturn(Optional.of(
+                PlayerPerformance.builder().playerId(1L).fixtureId(9000L).goals(1).minutesPlayed(90).cleanSheet(true).build()));
+        // two paid transfers this gameweek
+        when(transferRepository.findBySquadIdAndGameweekId(500L, 20L)).thenReturn(List.of(
+                Transfer.builder().id(1L).squadId(500L).gameweekId(20L).playerOutId(5L).playerInId(6L)
+                        .pointsCost(4).timestamp(LocalDateTime.now()).build(),
+                Transfer.builder().id(2L).squadId(500L).gameweekId(20L).playerOutId(7L).playerInId(8L)
+                        .pointsCost(4).timestamp(LocalDateTime.now()).build()));
+
+        GameweekPointsResponse response = service().findPoints(1L, 10L, 20L);
+
+        // captain doubling is off here: raw = 10 + 4 + 2 = 16, captain is player 1 so doubled = 32
+        assertThat(response.playerPoints()).isEqualTo(32);
+        assertThat(response.transferPointsCost()).isEqualTo(8);
+        assertThat(response.totalPoints()).isEqualTo(24);
     }
 
     @Test

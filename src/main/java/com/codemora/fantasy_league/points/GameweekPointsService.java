@@ -34,6 +34,8 @@ import com.codemora.fantasy_league.scoringrule.ScoringRule;
 import com.codemora.fantasy_league.scoringrule.ScoringRuleRepository;
 import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonRepository;
+import com.codemora.fantasy_league.transfer.Transfer;
+import com.codemora.fantasy_league.transfer.TransferRepository;
 
 /**
  * Points are computed live from PlayerPerformance + the season's ScoringRule
@@ -53,6 +55,7 @@ public class GameweekPointsService {
     private final PlayerPerformanceRepository playerPerformanceRepository;
     private final FixtureRepository fixtureRepository;
     private final ScoringRuleRepository scoringRuleRepository;
+    private final TransferRepository transferRepository;
     private final CurrentUserProvider currentUserProvider;
 
     public GameweekPointsService(
@@ -65,6 +68,7 @@ public class GameweekPointsService {
             PlayerPerformanceRepository playerPerformanceRepository,
             FixtureRepository fixtureRepository,
             ScoringRuleRepository scoringRuleRepository,
+            TransferRepository transferRepository,
             CurrentUserProvider currentUserProvider) {
         this.seasonRepository = seasonRepository;
         this.gameweekRepository = gameweekRepository;
@@ -75,6 +79,7 @@ public class GameweekPointsService {
         this.playerPerformanceRepository = playerPerformanceRepository;
         this.fixtureRepository = fixtureRepository;
         this.scoringRuleRepository = scoringRuleRepository;
+        this.transferRepository = transferRepository;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -94,21 +99,27 @@ public class GameweekPointsService {
                 .collect(Collectors.toMap(ScoringRule::getPosition, r -> r));
 
         List<PlayerPointsResponse> breakdown = new ArrayList<>();
-        int total = 0;
+        int playerPoints = 0;
         for (LineupSlot slot : slots) {
             Player player = playersById.get(slot.getPlayerId());
             int rawPoints = rawPoints(player, fixtureIdByTeamId, rulesByPosition);
             boolean isCaptain = player.getId().equals(lineup.getCaptainPlayerId());
             boolean counts = slot.getRole() == LineupRole.STARTER;
             int points = counts ? (isCaptain ? rawPoints * 2 : rawPoints) : 0;
-            total += points;
+            playerPoints += points;
             breakdown.add(new PlayerPointsResponse(player.getId(), player.getName(), player.getPosition(), slot.getRole(), isCaptain, rawPoints, points));
         }
         breakdown.sort(Comparator.comparing(PlayerPointsResponse::role)
                 .thenComparing(PlayerPointsResponse::position)
                 .thenComparing(PlayerPointsResponse::playerName));
 
-        return new GameweekPointsResponse(gameweekId, gameweek.getNumber(), breakdown, total);
+        // Transfers beyond the free allowance cost 4 points against the gameweek they were made in (#31).
+        int transferPointsCost = transferRepository.findBySquadIdAndGameweekId(squad.getId(), gameweekId).stream()
+                .mapToInt(Transfer::getPointsCost)
+                .sum();
+
+        return new GameweekPointsResponse(gameweekId, gameweek.getNumber(), breakdown,
+                playerPoints, transferPointsCost, playerPoints - transferPointsCost);
     }
 
     private int rawPoints(Player player, Map<Long, Long> fixtureIdByTeamId, Map<Position, ScoringRule> rulesByPosition) {
