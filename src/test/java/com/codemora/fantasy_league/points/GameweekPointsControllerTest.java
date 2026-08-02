@@ -44,6 +44,7 @@ class GameweekPointsControllerTest {
                 20L, 3, List.of(new PlayerPointsResponse(1L, "Keeper", Position.GK, LineupRole.STARTER, true, 16, 32)),
                 32, 4, 28, true));
 
+
         mockMvc.perform(get("/api/v1/leagues/1/seasons/10/gameweeks/20/points"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.playerPoints").value(32))

@@ -1,10 +1,13 @@
 package com.codemora.fantasy_league.fantasysquad;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface FantasySquadRepository extends JpaRepository<FantasySquad, Long> {
+
+    List<FantasySquad> findBySeasonId(Long seasonId);
 
     Optional<FantasySquad> findByUserIdAndSeasonId(Long userId, Long seasonId);
 
