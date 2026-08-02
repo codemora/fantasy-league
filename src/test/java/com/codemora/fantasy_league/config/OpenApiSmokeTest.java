@@ -112,22 +112,25 @@ class OpenApiSmokeTest {
     }
 
     @Test
-    void adminGroupOnlyContainsPreAuthorizeGuardedOperations() throws Exception {
-        // /api/v1/teams has POST (ADMIN) and GET (anyone); the admin group should
-        // carry only the former, even though both hang off the same path.
+    void adminGroupIncludesBothItsExclusiveOperationsAndEveryOperationASharedUserCanCall() throws Exception {
+        // An ADMIN token can call its own guarded POST /api/v1/teams *and* the
+        // unguarded GET anyone can call -- the admin group carries both.
         mockMvc.perform(get("/v3/api-docs/admin"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/teams'].post").exists())
-                .andExpect(jsonPath("$.paths['/api/v1/teams'].get").doesNotExist())
-                .andExpect(jsonPath("$.paths['/api/v1/teams/{id}'].get").doesNotExist());
+                .andExpect(jsonPath("$.paths['/api/v1/teams'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post").exists());
     }
 
     @Test
-    void userGroupExcludesEveryPreAuthorizeGuardedOperation() throws Exception {
+    void userGroupExcludesEveryPreAuthorizeGuardedOperationButIncludesTheSharedRest() throws Exception {
+        // /api/v1/teams has POST (ADMIN-only) and GET (anyone); the user group
+        // carries only the latter, even though both hang off the same path.
         mockMvc.perform(get("/v3/api-docs/user"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/api/v1/teams'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/teams'].post").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/teams/{id}'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post").exists());
     }
 
