@@ -5,6 +5,57 @@ This is an API for a fantasy league. Admins run club leagues, seasons, and fixtu
 
 Significant architecture decisions (persistence pattern, stack, simulation determinism, auth, etc.) are recorded in [docs/adr](docs/adr/README.md).
 
+## Contents
+- [Getting Started](#getting-started)
+- [API Overview](#api-overview)
+- [Testing](#testing)
+- [Class Diagram](#class-diagram)
+- [Scoring Rules](#scoring-rules)
+- [Squad Rules](#squad-rules)
+- [Gameweek Lifecycle](#gameweek-lifecycle)
+- [Match Simulation](#match-simulation)
+
+# Getting Started
+
+**Stack:** Java 21, Spring Boot 3.4.2, Spring Security (JWT), Spring Data JPA, Postgres, Flyway, springdoc-openapi. See [docs/adr](docs/adr/README.md) for the reasoning behind each choice.
+
+**Prerequisites:** a JDK 21, Docker (for Postgres — there's no H2/in-memory fallback outside the test profile, per [ADR 0003](docs/adr/0003-postgres-and-flyway.md)). The Maven wrapper (`mvnw`/`mvnw.cmd`) is checked in, so a local Maven install isn't required.
+
+1. Start Postgres:
+   ```
+   docker run --name fantasy-league-db -e POSTGRES_USER=fantasy_league -e POSTGRES_PASSWORD=fantasy_league -e POSTGRES_DB=fantasy_league -p 5432:5432 -d postgres
+   ```
+2. Run the app (Flyway applies migrations automatically on startup):
+   ```
+   ./mvnw spring-boot:run
+   ```
+   The API listens on `http://localhost:8080`.
+
+Config is environment-variable driven (`SPRING_DATASOURCE_URL`/`_USERNAME`/`_PASSWORD`, `JWT_SIGNING_SECRET`) with the values above as local defaults — see `src/main/resources/application.properties`. Never commit real secrets; override `JWT_SIGNING_SECRET` for anything beyond local development.
+
+# API Overview
+
+Interactive docs are served by the running app, no separate setup needed:
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- Raw OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+Every operation documents not just its success response but every error it can actually return (400/401/403/404/409/500), derived from the shape of the endpoint — see `OpenApiConfig`. All error bodies follow the RFC 7807 `ProblemDetail` shape ([ADR 0009](docs/adr/0009-rest-api-conventions.md)).
+
+Resources are nested under the entities that own them:
+- `POST /api/v1/auth/{register,login,refresh,logout}` — JWT access + refresh tokens ([ADR 0008](docs/adr/0008-jwt-authentication.md))
+- `/api/v1/leagues`, `/api/v1/teams`, `/api/v1/players` — top-level, admin-managed
+- `/api/v1/leagues/{leagueId}/seasons` — and nested under a season: `fixtures`, `scoring-rules`, `gameweeks`, `standings`, `squad`, `leaderboard`
+- `/api/v1/leagues/{leagueId}/seasons/{seasonId}/gameweeks/{gameweekId}/lineup`, `.../points` — per-gameweek lineup submission and scoring
+
+Requests need `Authorization: Bearer <access token>` except the `auth` endpoints above; `ADMIN`-only operations are marked as such in Swagger UI.
+
+# Testing
+
+```
+./mvnw test
+```
+Runs the full suite: unit tests (pure domain logic), service tests (Mockito-mocked repositories), `@DataJpaTest` repository tests against H2, and `@WebMvcTest` controller tests — no Docker needed. [ADR 0011](docs/adr/0011-testing-strategy.md) also specifies a Testcontainers-backed `*IT.java` layer run via `./mvnw verify`; that layer isn't wired up in the build yet.
+
 # Class Diagram
 
 Persistence methods (`save()`/`create()`/`update()`/`delete()`) are omitted below — they're implied for every entity. Only behavioral methods are shown.
