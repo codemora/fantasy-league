@@ -1,8 +1,10 @@
 package com.codemora.fantasy_league.team;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.codemora.fantasy_league.auth.JwtService;
 import com.codemora.fantasy_league.common.error.ConflictException;
+import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.team.dto.TeamResponse;
 
 /**
@@ -65,5 +68,35 @@ class TeamControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Arsenal\"}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void updateSuccessReturns200() throws Exception {
+        when(teamService.update(eq(1L), any())).thenReturn(new TeamResponse(1L, "Arsenal FC", "New"));
+
+        mockMvc.perform(put("/api/v1/teams/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Arsenal FC\",\"slogan\":\"New\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Arsenal FC"));
+    }
+
+    @Test
+    void updateUnknownIdReturns404() throws Exception {
+        when(teamService.update(eq(99L), any())).thenThrow(new NotFoundException("No team with id 99"));
+
+        mockMvc.perform(put("/api/v1/teams/99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Arsenal\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updateWithBlankNameReturnsProblemDetail() throws Exception {
+        mockMvc.perform(put("/api/v1/teams/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("name"));
     }
 }
