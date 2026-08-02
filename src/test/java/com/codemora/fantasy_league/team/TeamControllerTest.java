@@ -21,10 +21,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
+
 import com.codemora.fantasy_league.auth.JwtService;
 import com.codemora.fantasy_league.common.PageResponse;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.fixture.FixtureService;
+import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.team.dto.TeamResponse;
 
 /**
@@ -42,6 +46,9 @@ class TeamControllerTest {
 
     @MockitoBean
     private TeamService teamService;
+
+    @MockitoBean
+    private FixtureService fixtureService;
 
     @MockitoBean
     private JwtService jwtService;
@@ -155,5 +162,31 @@ class TeamControllerTest {
                 .andExpect(jsonPath("$.content[0].name").value("Arsenal"))
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.page").value(0));
+    }
+
+    @Test
+    void fixturesDefaultsToAllStatus() throws Exception {
+        when(fixtureService.findByTeam(eq(1L), eq("all"))).thenReturn(List.of(
+                new FixtureResponse(500L, 10L, 200L, 1L, 2L, null, null, false, LocalDateTime.of(2025, 8, 1, 15, 0))));
+
+        mockMvc.perform(get("/api/v1/teams/1/fixtures"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(500));
+    }
+
+    @Test
+    void fixturesPassesThroughStatusFilter() throws Exception {
+        when(fixtureService.findByTeam(eq(1L), eq("played"))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/teams/1/fixtures").param("status", "played"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void fixturesUnknownTeamReturns404() throws Exception {
+        when(fixtureService.findByTeam(eq(99L), eq("all"))).thenThrow(new NotFoundException("No team with id 99"));
+
+        mockMvc.perform(get("/api/v1/teams/99/fixtures"))
+                .andExpect(status().isNotFound());
     }
 }
