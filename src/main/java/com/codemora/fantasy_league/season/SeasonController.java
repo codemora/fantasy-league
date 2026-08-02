@@ -1,0 +1,87 @@
+package com.codemora.fantasy_league.season;
+
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
+import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
+import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
+import com.codemora.fantasy_league.season.dto.SeasonResponse;
+import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+
+@RestController
+@RequestMapping("/api/v1/leagues/{leagueId}/seasons")
+@Tag(name = "Seasons")
+public class SeasonController {
+
+    private final SeasonService seasonService;
+
+    public SeasonController(SeasonService seasonService) {
+        this.seasonService = seasonService;
+    }
+
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Create a season", description = "ADMIN only. 404 if the league doesn't exist.")
+    public ResponseEntity<SeasonResponse> create(
+            @PathVariable Long leagueId, @Valid @RequestBody CreateSeasonRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(seasonService.create(leagueId, request));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Edit a season", description = "ADMIN only. 409 if team_limit would drop below the current number of entered teams.")
+    public ResponseEntity<SeasonResponse> update(
+            @PathVariable Long leagueId, @PathVariable Long id, @Valid @RequestBody UpdateSeasonRequest request) {
+        return ResponseEntity.ok(seasonService.update(leagueId, id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete a season", description = "ADMIN only. Fails with 409 if the season has entered teams, fixtures, or fantasy squads.")
+    public ResponseEntity<Void> delete(@PathVariable Long leagueId, @PathVariable Long id) {
+        seasonService.delete(leagueId, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/entrants")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Add a team to a season", description = "ADMIN only. 409 if the team is already entered or the season is full.")
+    public ResponseEntity<SeasonEntrantResponse> addEntrant(
+            @PathVariable Long leagueId, @PathVariable Long id, @Valid @RequestBody AddSeasonEntrantRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(seasonService.addEntrant(leagueId, id, request));
+    }
+
+    @DeleteMapping("/{id}/entrants/{teamId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Remove a team from a season", description = "ADMIN only. 409 if the season already has fixtures generated.")
+    public ResponseEntity<Void> removeEntrant(
+            @PathVariable Long leagueId, @PathVariable Long id, @PathVariable Long teamId) {
+        seasonService.removeEntrant(leagueId, id, teamId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/entrants/generate")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Generate simulated teams for a season",
+            description = "ADMIN only. Creates brand-new teams (distinct from #11's add-existing-team flow) up to team_limit.")
+    public ResponseEntity<List<GeneratedEntrantResponse>> generateEntrants(
+            @PathVariable Long leagueId, @PathVariable Long id) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(seasonService.generateEntrants(leagueId, id));
+    }
+}
