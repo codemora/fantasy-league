@@ -3,6 +3,7 @@ package com.codemora.fantasy_league.league;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -41,5 +42,13 @@ public class LeagueController {
     @Operation(summary = "Edit a league", description = "ADMIN only. League names must remain unique.")
     public ResponseEntity<LeagueResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateLeagueRequest request) {
         return ResponseEntity.ok(leagueService.update(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete a league", description = "ADMIN only. Fails with 409 if the league has any seasons.")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        leagueService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.codemora.fantasy_league.auth.Role;
 import com.codemora.fantasy_league.auth.User;
@@ -20,6 +21,8 @@ class LeagueRepositoryTest {
     private LeagueRepository leagueRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private Long adminId;
 
@@ -57,5 +60,23 @@ class LeagueRepositoryTest {
 
         assertThat(leagueRepository.existsByNameAndIdNot("Premier League", premierLeague.getId())).isFalse();
         assertThat(leagueRepository.existsByNameAndIdNot("La Liga", premierLeague.getId())).isTrue();
+    }
+
+    @Test
+    void hasAnySeasonsIsFalseForAnUnusedLeague() {
+        League premierLeague = leagueRepository.save(League.builder().createdByUserId(adminId).name("Premier League").build());
+
+        assertThat(leagueRepository.hasAnySeasons(premierLeague.getId())).isFalse();
+    }
+
+    @Test
+    void hasAnySeasonsIsTrueOnceALeagueHasASeason() {
+        League premierLeague = leagueRepository.save(League.builder().createdByUserId(adminId).name("Premier League").build());
+
+        jdbcTemplate.update(
+                "INSERT INTO season (league_id, period, team_limit, starting_budget) VALUES (?, ?, ?, ?)",
+                premierLeague.getId(), "2025-26", 20, 1000);
+
+        assertThat(leagueRepository.hasAnySeasons(premierLeague.getId())).isTrue();
     }
 }

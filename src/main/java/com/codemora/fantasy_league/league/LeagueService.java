@@ -53,6 +53,18 @@ public class LeagueService {
         return toResponse(league);
     }
 
+    @Transactional
+    public void delete(Long id) {
+        League league = leagueRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("No league with id " + id));
+        if (leagueRepository.hasAnySeasons(id)) {
+            log.warn("league_deletion_conflict id={} reason=has_seasons", id);
+            throw new ConflictException("League '" + league.getName() + "' has seasons and can't be deleted");
+        }
+        leagueRepository.delete(league);
+        log.info("league_deleted id={} name={}", league.getId(), league.getName());
+    }
+
     private LeagueResponse toResponse(League league) {
         return new LeagueResponse(league.getId(), league.getName());
     }

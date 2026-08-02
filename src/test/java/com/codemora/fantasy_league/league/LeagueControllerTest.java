@@ -2,7 +2,9 @@ package com.codemora.fantasy_league.league;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -96,5 +98,27 @@ class LeagueControllerTest {
                         .content("{\"name\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("name"));
+    }
+
+    @Test
+    void deleteSuccessReturns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/leagues/1"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteUnknownIdReturns404() throws Exception {
+        doThrow(new NotFoundException("No league with id 99")).when(leagueService).delete(99L);
+
+        mockMvc.perform(delete("/api/v1/leagues/99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteLeagueInUseReturns409() throws Exception {
+        doThrow(new ConflictException("League 'Premier League' has seasons and can't be deleted")).when(leagueService).delete(1L);
+
+        mockMvc.perform(delete("/api/v1/leagues/1"))
+                .andExpect(status().isConflict());
     }
 }
