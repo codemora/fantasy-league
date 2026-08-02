@@ -58,6 +58,17 @@ class FantasySquadRepositoryTest {
     }
 
     @Test
+    void findBySeasonIdReturnsEverySquadInTheSeason() {
+        Long otherUserId = userRepository.save(
+                User.builder().username("bob").passwordHash("hashed").role(Role.USER).build()).getId();
+        fantasySquadRepository.save(FantasySquad.builder().userId(userId).seasonId(seasonId).bankBalance(100).freeTransfers(1).build());
+        fantasySquadRepository.save(FantasySquad.builder().userId(otherUserId).seasonId(seasonId).bankBalance(50).freeTransfers(1).build());
+
+        assertThat(fantasySquadRepository.findBySeasonId(seasonId)).hasSize(2);
+        assertThat(fantasySquadRepository.findBySeasonId(999L)).isEmpty();
+    }
+
+    @Test
     void existsByUserIdAndSeasonIdReflectsSavedSquads() {
         assertThat(fantasySquadRepository.existsByUserIdAndSeasonId(userId, seasonId)).isFalse();
 
