@@ -3,6 +3,8 @@ package com.codemora.fantasy_league.fixture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,15 +21,22 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.fixture.dto.AddFixtureResultRequest;
 import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
+import com.codemora.fantasy_league.fixture.dto.SimulateFixturesResponse;
 import com.codemora.fantasy_league.gameweek.Gameweek;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.gameweek.GameweekStatus;
+import com.codemora.fantasy_league.player.Player;
+import com.codemora.fantasy_league.player.PlayerPerformance;
+import com.codemora.fantasy_league.player.PlayerPerformanceGenerator;
+import com.codemora.fantasy_league.player.PlayerPerformanceRepository;
+import com.codemora.fantasy_league.player.PlayerRepository;
 import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonEntrant;
 import com.codemora.fantasy_league.season.SeasonEntrantRepository;
@@ -46,13 +56,21 @@ class FixtureServiceTest {
     private FixtureRepository fixtureRepository;
     @Mock
     private TeamRepository teamRepository;
+    @Mock
+    private PlayerRepository playerRepository;
+    @Mock
+    private PlayerPerformanceRepository playerPerformanceRepository;
 
-    // Real instance: pure, deterministic, already covered by its own thorough
-    // test -- exercising it for real here is more meaningful than mocking it.
+    // Real instances: pure, deterministic, already covered by their own thorough
+    // tests -- exercising them for real here is more meaningful than mocking them.
     private final RoundRobinScheduler roundRobinScheduler = new RoundRobinScheduler();
+    private final MatchScoreSimulator matchScoreSimulator = new MatchScoreSimulator();
+    private final PlayerPerformanceGenerator playerPerformanceGenerator = new PlayerPerformanceGenerator();
 
     private FixtureService fixtureService() {
-        return new FixtureService(seasonRepository, seasonEntrantRepository, gameweekRepository, fixtureRepository, roundRobinScheduler, teamRepository);
+        return new FixtureService(
+                seasonRepository, seasonEntrantRepository, gameweekRepository, fixtureRepository, roundRobinScheduler,
+                teamRepository, playerRepository, playerPerformanceRepository, matchScoreSimulator, playerPerformanceGenerator);
     }
 
     private Season fourTeamSeason() {
@@ -277,5 +295,96 @@ class FixtureServiceTest {
         when(teamRepository.existsById(999L)).thenReturn(false);
 
         assertThatThrownBy(() -> fixtureService().findByTeam(999L, "all")).isInstanceOf(NotFoundException.class);
+    }
+
+    private List<Player> roster(Long teamId) {
+        List<Player> players = new ArrayList<>();
+        long id = teamId * 100;
+        for (int i = 0; i < 2; i++) players.add(Player.builder().id(id++).teamId(teamId).createdByUserId(7L).name("GK" + i).position(Position.GK).marketValue(45).build());
+        for (int i = 0; i < 5; i++) players.add(Player.builder().id(id++).teamId(teamId).createdByUserId(7L).name("DEF" + i).position(Position.DEF).marketValue(50).build());
+        for (int i = 0; i < 5; i++) players.add(Player.builder().id(id++).teamId(teamId).createdByUserId(7L).name("MID" + i).position(Position.MID).marketValue(60).build());
+        for (int i = 0; i < 3; i++) players.add(Player.builder().id(id++).teamId(teamId).createdByUserId(7L).name("FWD" + i).position(Position.FWD).marketValue(70).build());
+        return players;
+    }
+
+    @Test
+    void simulateMarksUnplayedFixturesAsPlayedAndGeneratesPlayerPerformances() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findBySeasonIdAndPlayedFalse(10L)).thenReturn(List.of(unplayedFixture()));
+        when(playerRepository.findByTeamId(101L)).thenReturn(roster(101L));
+        when(playerRepository.findByTeamId(102L)).thenReturn(roster(102L));
+        when(fixtureRepository.save(any(Fixture.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SimulateFixturesResponse response = fixtureService().simulate(1L, 10L, null);
+
+        assertThat(response.fixturesSimulated()).isEqualTo(1);
+        verify(fixtureRepository).save(argThat(f -> f.isPlayed() && f.getHomeTeamScore() != null && f.getAwayTeamScore() != null));
+        verify(playerPerformanceRepository).saveAll(argThat((List<PlayerPerformance> performances) -> performances.size() == 30));
+    }
+
+    @Test
+    void simulateFiltersByGameweekWhenGiven() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findBySeasonIdAndGameweekIdAndPlayedFalse(10L, 200L)).thenReturn(List.of(unplayedFixture()));
+        when(playerRepository.findByTeamId(101L)).thenReturn(roster(101L));
+        when(playerRepository.findByTeamId(102L)).thenReturn(roster(102L));
+        when(fixtureRepository.save(any(Fixture.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SimulateFixturesResponse response = fixtureService().simulate(1L, 10L, 200L);
+
+        assertThat(response.fixturesSimulated()).isEqualTo(1);
+        verify(fixtureRepository, never()).findBySeasonIdAndPlayedFalse(any());
+    }
+
+    @Test
+    void simulateIsANoOpWhenNothingIsUnplayed() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findBySeasonIdAndPlayedFalse(10L)).thenReturn(List.of());
+
+        SimulateFixturesResponse response = fixtureService().simulate(1L, 10L, null);
+
+        assertThat(response.fixturesSimulated()).isZero();
+        verify(fixtureRepository, never()).save(any());
+    }
+
+    @Test
+    void simulateRejectsUnknownSeason() {
+        when(seasonRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fixtureService().simulate(1L, 99L, null)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void simulateRejectsSeasonInDifferentLeague() {
+        Season wrongLeagueSeason = Season.builder().id(10L).leagueId(2L).period("2025-26").teamLimit(4).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(wrongLeagueSeason));
+
+        assertThatThrownBy(() -> fixtureService().simulate(1L, 10L, null)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void simulateProducesTheSameResultForTheSameSeed() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(fourTeamSeason()));
+        when(fixtureRepository.findBySeasonIdAndPlayedFalse(10L)).thenReturn(List.of(unplayedFixture()));
+        when(playerRepository.findByTeamId(101L)).thenReturn(roster(101L));
+        when(playerRepository.findByTeamId(102L)).thenReturn(roster(102L));
+
+        List<Fixture> firstRun = new ArrayList<>();
+        doAnswer(invocation -> {
+            firstRun.add(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        }).when(fixtureRepository).save(any(Fixture.class));
+        fixtureService().simulate(1L, 10L, null);
+
+        when(fixtureRepository.findBySeasonIdAndPlayedFalse(10L)).thenReturn(List.of(unplayedFixture()));
+        List<Fixture> secondRun = new ArrayList<>();
+        doAnswer(invocation -> {
+            secondRun.add(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        }).when(fixtureRepository).save(any(Fixture.class));
+        fixtureService().simulate(1L, 10L, null);
+
+        assertThat(firstRun.get(0).getHomeTeamScore()).isEqualTo(secondRun.get(0).getHomeTeamScore());
+        assertThat(firstRun.get(0).getAwayTeamScore()).isEqualTo(secondRun.get(0).getAwayTeamScore());
     }
 }
