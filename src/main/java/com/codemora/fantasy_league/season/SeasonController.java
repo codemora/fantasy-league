@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
 
@@ -52,5 +54,13 @@ public class SeasonController {
     public ResponseEntity<Void> delete(@PathVariable Long leagueId, @PathVariable Long id) {
         seasonService.delete(leagueId, id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/entrants")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Add a team to a season", description = "ADMIN only. 409 if the team is already entered or the season is full.")
+    public ResponseEntity<SeasonEntrantResponse> addEntrant(
+            @PathVariable Long leagueId, @PathVariable Long id, @Valid @RequestBody AddSeasonEntrantRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(seasonService.addEntrant(leagueId, id, request));
     }
 }

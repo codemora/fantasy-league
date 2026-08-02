@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.codemora.fantasy_league.auth.JwtService;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 
 /**
@@ -125,6 +126,37 @@ class SeasonControllerTest {
                 .when(seasonService).delete(1L, 10L);
 
         mockMvc.perform(delete("/api/v1/leagues/1/seasons/10"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void addEntrantWithMissingTeamIdReturnsProblemDetail() throws Exception {
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/entrants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("teamId"));
+    }
+
+    @Test
+    void addEntrantSuccessReturns201() throws Exception {
+        when(seasonService.addEntrant(eq(1L), eq(10L), any())).thenReturn(new SeasonEntrantResponse(100L, 10L, 5L));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/entrants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"teamId\":5}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.teamId").value(5));
+    }
+
+    @Test
+    void addEntrantConflictReturns409() throws Exception {
+        when(seasonService.addEntrant(eq(1L), eq(10L), any()))
+                .thenThrow(new ConflictException("Team 5 is already entered in this season"));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/entrants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"teamId\":5}"))
                 .andExpect(status().isConflict());
     }
 }
