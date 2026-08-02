@@ -5,13 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
+import com.codemora.fantasy_league.common.PageResponse;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
@@ -135,5 +140,45 @@ class TeamServiceTest {
         when(teamRepository.hasAnyFixtures(1L)).thenReturn(true);
 
         assertThatThrownBy(() -> teamService().delete(1L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void findByIdReturnsTheTeam() {
+        Team existing = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(existing));
+
+        assertThat(teamService().findById(1L).name()).isEqualTo("Arsenal");
+    }
+
+    @Test
+    void findByIdRejectsUnknownId() {
+        when(teamRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService().findById(99L)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void searchWithoutNameListsAllTeams() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Team arsenal = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(arsenal), pageable, 1));
+
+        PageResponse<TeamResponse> response = teamService().search(null, pageable);
+
+        assertThat(response.content()).hasSize(1);
+        assertThat(response.content().get(0).name()).isEqualTo("Arsenal");
+        assertThat(response.totalElements()).isEqualTo(1);
+    }
+
+    @Test
+    void searchWithNameFiltersByPartialCaseInsensitiveMatch() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Team arsenal = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findByNameContainingIgnoreCase("arse", pageable))
+                .thenReturn(new PageImpl<>(List.of(arsenal), pageable, 1));
+
+        PageResponse<TeamResponse> response = teamService().search("arse", pageable);
+
+        assertThat(response.content()).extracting(TeamResponse::name).containsExactly("Arsenal");
     }
 }

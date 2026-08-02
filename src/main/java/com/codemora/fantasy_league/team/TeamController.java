@@ -1,16 +1,21 @@
 package com.codemora.fantasy_league.team;
 
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.codemora.fantasy_league.common.PageResponse;
 import com.codemora.fantasy_league.team.dto.CreateTeamRequest;
 import com.codemora.fantasy_league.team.dto.TeamResponse;
 import com.codemora.fantasy_league.team.dto.UpdateTeamRequest;
@@ -50,5 +55,19 @@ public class TeamController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         teamService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "View a team's details")
+    public ResponseEntity<TeamResponse> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(teamService.findById(id));
+    }
+
+    @GetMapping
+    @Operation(summary = "Search teams", description = "Optionally filter by a case-insensitive, partial match on name.")
+    public ResponseEntity<PageResponse<TeamResponse>> search(
+            @RequestParam(required = false) String name,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ResponseEntity.ok(teamService.search(name, pageable));
     }
 }
