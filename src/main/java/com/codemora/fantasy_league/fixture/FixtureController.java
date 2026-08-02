@@ -5,13 +5,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
+import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/leagues/{leagueId}/seasons/{seasonId}/fixtures")
@@ -32,5 +37,15 @@ public class FixtureController {
     public ResponseEntity<GenerateFixturesResponse> generate(
             @PathVariable Long leagueId, @PathVariable Long seasonId) {
         return ResponseEntity.status(HttpStatus.CREATED).body(fixtureService.generate(leagueId, seasonId));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Edit a fixture's kickoff time", description = "ADMIN only. 409 if the fixture already has a "
+            + "recorded result or its gameweek's deadline has passed.")
+    public ResponseEntity<FixtureResponse> update(
+            @PathVariable Long leagueId, @PathVariable Long seasonId, @PathVariable Long id,
+            @Valid @RequestBody EditFixtureRequest request) {
+        return ResponseEntity.ok(fixtureService.update(leagueId, seasonId, id, request));
     }
 }
