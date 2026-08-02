@@ -4,9 +4,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
+import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.league.dto.CreateLeagueRequest;
 import com.codemora.fantasy_league.league.dto.LeagueResponse;
+import com.codemora.fantasy_league.league.dto.UpdateLeagueRequest;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,6 +36,20 @@ public class LeagueService {
                 .build();
         league = leagueRepository.save(league);
         log.info("league_created id={} name={} created_by_user_id={}", league.getId(), league.getName(), league.getCreatedByUserId());
+        return toResponse(league);
+    }
+
+    @Transactional
+    public LeagueResponse update(Long id, UpdateLeagueRequest request) {
+        League league = leagueRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("No league with id " + id));
+        if (leagueRepository.existsByNameAndIdNot(request.name(), id)) {
+            log.warn("league_update_conflict id={} name={}", id, request.name());
+            throw new ConflictException("A league named '" + request.name() + "' already exists");
+        }
+        league.setName(request.name());
+        league = leagueRepository.save(league);
+        log.info("league_updated id={} name={}", league.getId(), league.getName());
         return toResponse(league);
     }
 
