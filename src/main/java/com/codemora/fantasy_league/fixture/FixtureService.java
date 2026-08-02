@@ -2,20 +2,29 @@ package com.codemora.fantasy_league.fixture;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.fixture.dto.AddFixtureResultRequest;
 import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
+import com.codemora.fantasy_league.fixture.dto.SimulateFixturesResponse;
 import com.codemora.fantasy_league.gameweek.Gameweek;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.gameweek.GameweekStatus;
+import com.codemora.fantasy_league.player.Player;
+import com.codemora.fantasy_league.player.PlayerPerformance;
+import com.codemora.fantasy_league.player.PlayerPerformanceGenerator;
+import com.codemora.fantasy_league.player.PlayerPerformanceRepository;
+import com.codemora.fantasy_league.player.PlayerRepository;
 import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonEntrant;
 import com.codemora.fantasy_league.season.SeasonEntrantRepository;
@@ -27,23 +36,38 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class FixtureService {
 
+    /** Fallback rating (tenths-of-millions, see ADR 0004) when a team's roster hasn't been generated (#25) yet. */
+    private static final double NEUTRAL_RATING = 65.0;
+
     private final SeasonRepository seasonRepository;
     private final SeasonEntrantRepository seasonEntrantRepository;
     private final GameweekRepository gameweekRepository;
     private final FixtureRepository fixtureRepository;
     private final RoundRobinScheduler roundRobinScheduler;
+    private final PlayerRepository playerRepository;
+    private final PlayerPerformanceRepository playerPerformanceRepository;
+    private final MatchScoreSimulator matchScoreSimulator;
+    private final PlayerPerformanceGenerator playerPerformanceGenerator;
 
     public FixtureService(
             SeasonRepository seasonRepository,
             SeasonEntrantRepository seasonEntrantRepository,
             GameweekRepository gameweekRepository,
             FixtureRepository fixtureRepository,
-            RoundRobinScheduler roundRobinScheduler) {
+            RoundRobinScheduler roundRobinScheduler,
+            PlayerRepository playerRepository,
+            PlayerPerformanceRepository playerPerformanceRepository,
+            MatchScoreSimulator matchScoreSimulator,
+            PlayerPerformanceGenerator playerPerformanceGenerator) {
         this.seasonRepository = seasonRepository;
         this.seasonEntrantRepository = seasonEntrantRepository;
         this.gameweekRepository = gameweekRepository;
         this.fixtureRepository = fixtureRepository;
         this.roundRobinScheduler = roundRobinScheduler;
+        this.playerRepository = playerRepository;
+        this.playerPerformanceRepository = playerPerformanceRepository;
+        this.matchScoreSimulator = matchScoreSimulator;
+        this.playerPerformanceGenerator = playerPerformanceGenerator;
     }
 
     /**
@@ -147,6 +171,66 @@ public class FixtureService {
         log.info("fixture_result_recorded id={} home_score={} away_score={}",
                 saved.getId(), saved.getHomeTeamScore(), saved.getAwayTeamScore());
         return toResponse(saved);
+    }
+
+    /**
+     * Simulates every unplayed fixture in the season (or just one gameweek, if
+     * given), per #21: a Poisson-distributed score seeded from each fixture's
+     * own simulationSeed, then #26's player performance generation for both
+     * rosters using that same Random instance so goal/assist/card attribution
+     * is reproducible alongside the score. Only touches unplayed fixtures, so
+     * it's naturally idempotent -- a second call finds nothing left to do.
+     */
+    @Transactional
+    public SimulateFixturesResponse simulate(Long leagueId, Long seasonId, Long gameweekId) {
+        Season season = seasonRepository.findById(seasonId)
+                .orElseThrow(() -> new NotFoundException("No season with id " + seasonId));
+        if (!season.getLeagueId().equals(leagueId)) {
+            throw new NotFoundException("No season with id " + seasonId + " under league " + leagueId);
+        }
+        List<Fixture> unplayed = gameweekId != null
+                ? fixtureRepository.findBySeasonIdAndGameweekIdAndPlayedFalse(seasonId, gameweekId)
+                : fixtureRepository.findBySeasonIdAndPlayedFalse(seasonId);
+
+        int simulated = 0;
+        for (Fixture fixture : unplayed) {
+            Random random = new Random(fixture.getSimulationSeed());
+            List<Player> homeRoster = playerRepository.findByTeamId(fixture.getHomeTeamId());
+            List<Player> awayRoster = playerRepository.findByTeamId(fixture.getAwayTeamId());
+
+            double[] homeRating = teamRating(homeRoster);
+            double[] awayRating = teamRating(awayRoster);
+            MatchScore score = matchScoreSimulator.simulate(homeRating[0], homeRating[1], awayRating[0], awayRating[1], random);
+
+            fixture.setHomeTeamScore(score.homeGoals());
+            fixture.setAwayTeamScore(score.awayGoals());
+            fixture.setPlayed(true);
+            fixtureRepository.save(fixture);
+
+            List<PlayerPerformance> performances = playerPerformanceGenerator.generate(
+                    fixture.getId(), homeRoster, awayRoster, score.homeGoals(), score.awayGoals(), random);
+            playerPerformanceRepository.saveAll(performances);
+            simulated++;
+        }
+
+        log.info("fixtures_simulated season_id={} gameweek_id={} count={}", seasonId, gameweekId, simulated);
+        return new SimulateFixturesResponse(simulated);
+    }
+
+    /** {attack, defense}, averaged from market_value (see ADR 0004) as a stand-in for real player ratings. */
+    private double[] teamRating(List<Player> roster) {
+        double attack = averageValue(roster, Position.FWD, Position.MID);
+        double defense = averageValue(roster, Position.GK, Position.DEF);
+        return new double[] {attack, defense};
+    }
+
+    private double averageValue(List<Player> roster, Position... positions) {
+        Set<Position> included = Set.of(positions);
+        return roster.stream()
+                .filter(p -> included.contains(p.getPosition()))
+                .mapToInt(Player::getMarketValue)
+                .average()
+                .orElse(NEUTRAL_RATING);
     }
 
     /**
