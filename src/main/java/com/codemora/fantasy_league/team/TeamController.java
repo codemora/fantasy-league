@@ -3,6 +3,7 @@ package com.codemora.fantasy_league.team;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -41,5 +42,13 @@ public class TeamController {
     @Operation(summary = "Edit a team", description = "ADMIN only. Team names must remain unique.")
     public ResponseEntity<TeamResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateTeamRequest request) {
         return ResponseEntity.ok(teamService.update(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete a team", description = "ADMIN only. Fails with 409 if the team has been entered into a season, has players, or has fixtures.")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        teamService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

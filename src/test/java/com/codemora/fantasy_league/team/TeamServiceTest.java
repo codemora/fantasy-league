@@ -86,4 +86,54 @@ class TeamServiceTest {
         assertThatThrownBy(() -> teamService().update(1L, new UpdateTeamRequest("Chelsea", null)))
                 .isInstanceOf(ConflictException.class);
     }
+
+    @Test
+    void deleteRemovesAnUnusedTeam() {
+        Team existing = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teamRepository.isEnteredInAnySeason(1L)).thenReturn(false);
+        when(teamRepository.hasAnyPlayers(1L)).thenReturn(false);
+        when(teamRepository.hasAnyFixtures(1L)).thenReturn(false);
+
+        teamService().delete(1L);
+
+        org.mockito.Mockito.verify(teamRepository).delete(existing);
+    }
+
+    @Test
+    void deleteRejectsUnknownId() {
+        when(teamRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService().delete(99L)).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void deleteRejectsTeamEnteredInASeason() {
+        Team existing = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teamRepository.isEnteredInAnySeason(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> teamService().delete(1L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void deleteRejectsTeamWithPlayers() {
+        Team existing = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teamRepository.isEnteredInAnySeason(1L)).thenReturn(false);
+        when(teamRepository.hasAnyPlayers(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> teamService().delete(1L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void deleteRejectsTeamWithFixtures() {
+        Team existing = Team.builder().id(1L).createdByUserId(7L).name("Arsenal").build();
+        when(teamRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teamRepository.isEnteredInAnySeason(1L)).thenReturn(false);
+        when(teamRepository.hasAnyPlayers(1L)).thenReturn(false);
+        when(teamRepository.hasAnyFixtures(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> teamService().delete(1L)).isInstanceOf(ConflictException.class);
+    }
 }
