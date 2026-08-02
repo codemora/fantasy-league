@@ -19,6 +19,9 @@ import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.fantasysquad.dto.CreateFantasySquadRequest;
 import com.codemora.fantasy_league.fantasysquad.dto.FantasySquadResponse;
 import com.codemora.fantasy_league.fantasysquad.dto.SquadPlayerResponse;
+import com.codemora.fantasy_league.gameweek.Gameweek;
+import com.codemora.fantasy_league.gameweek.GameweekDeadlineGuard;
+import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.player.Player;
 import com.codemora.fantasy_league.player.PlayerRepository;
 import com.codemora.fantasy_league.season.Season;
@@ -45,6 +48,8 @@ public class FantasySquadService {
     private final PlayerRepository playerRepository;
     private final FantasySquadRepository fantasySquadRepository;
     private final SquadPlayerRepository squadPlayerRepository;
+    private final GameweekRepository gameweekRepository;
+    private final GameweekDeadlineGuard gameweekDeadlineGuard;
     private final CurrentUserProvider currentUserProvider;
 
     public FantasySquadService(
@@ -52,26 +57,27 @@ public class FantasySquadService {
             PlayerRepository playerRepository,
             FantasySquadRepository fantasySquadRepository,
             SquadPlayerRepository squadPlayerRepository,
+            GameweekRepository gameweekRepository,
+            GameweekDeadlineGuard gameweekDeadlineGuard,
             CurrentUserProvider currentUserProvider) {
         this.seasonRepository = seasonRepository;
         this.playerRepository = playerRepository;
         this.fantasySquadRepository = fantasySquadRepository;
         this.squadPlayerRepository = squadPlayerRepository;
+        this.gameweekRepository = gameweekRepository;
+        this.gameweekDeadlineGuard = gameweekDeadlineGuard;
         this.currentUserProvider = currentUserProvider;
     }
 
     /**
      * purchasePrice is always the player's current market_value at the moment
      * of purchase, not client-supplied -- trusting a client-chosen price would
-     * let the budget check be gamed. Deadline locking (only allowed while the
-     * relevant gameweek is UPCOMING, per #29's acceptance criteria) is
-     * deferred to #36, which covers squad/lineup/transfer locking together;
-     * enforcing a partial version of it here would likely need reworking once
-     * that lands.
+     * let the budget check be gamed.
      */
     @Transactional
     public FantasySquadResponse create(Long leagueId, Long seasonId, CreateFantasySquadRequest request) {
         Season season = findInLeague(leagueId, seasonId);
+        assertSeasonAcceptingSquads(seasonId);
         Long userId = currentUserProvider.getUserId();
 
         if (fantasySquadRepository.existsByUserIdAndSeasonId(userId, seasonId)) {
@@ -129,6 +135,25 @@ public class FantasySquadService {
         List<Player> players = playerRepository.findAllById(
                 squadPlayers.stream().map(SquadPlayer::getPlayerId).toList());
         return toResponse(squad, squadPlayers, players);
+    }
+
+    /**
+     * Squad creation isn't tied to a gameweek in the URL, so "only while the
+     * gameweek is UPCOMING" (#36) resolves to: there must still be a gameweek
+     * left to play. A season with no gameweeks generated yet hasn't started,
+     * so drafting is fine; once gameweeks exist and every one of them has
+     * locked, the season is underway and a new squad can no longer join it.
+     */
+    private void assertSeasonAcceptingSquads(Long seasonId) {
+        List<Gameweek> gameweeks = gameweekRepository.findBySeasonIdOrderByNumber(seasonId);
+        if (gameweeks.isEmpty()) {
+            return;
+        }
+        boolean anyOpen = gameweeks.stream().anyMatch(gameweekDeadlineGuard::isOpenForChanges);
+        if (!anyOpen) {
+            throw new ConflictException("This season is no longer accepting new squads: "
+                    + "every gameweek's deadline has passed");
+        }
     }
 
     private void validateComposition(List<Player> players) {

@@ -8,5 +8,7 @@ public record GameweekPointsResponse(
         List<PlayerPointsResponse> players,
         int playerPoints,
         int transferPointsCost,
-        int totalPoints) {
+        int totalPoints,
+        /** False until the gameweek reaches COMPLETE; until then these points can still move (#36). */
+        boolean official) {
 }

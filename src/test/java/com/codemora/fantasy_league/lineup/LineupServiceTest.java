@@ -27,6 +27,7 @@ import com.codemora.fantasy_league.fantasysquad.FantasySquadRepository;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayer;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayerRepository;
 import com.codemora.fantasy_league.gameweek.Gameweek;
+import com.codemora.fantasy_league.gameweek.GameweekDeadlineGuard;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.gameweek.GameweekStatus;
 import com.codemora.fantasy_league.lineup.dto.GameweekLineupResponse;
@@ -56,18 +57,21 @@ class LineupServiceTest {
     @Mock
     private CurrentUserProvider currentUserProvider;
 
+    /** Real guard rather than a mock: it's a pure component, so exercise the actual rule. */
     private LineupService lineupService() {
         return new LineupService(seasonRepository, gameweekRepository, fantasySquadRepository, squadPlayerRepository,
-                playerRepository, gameweekLineupRepository, lineupSlotRepository, currentUserProvider);
+                playerRepository, gameweekLineupRepository, lineupSlotRepository, new GameweekDeadlineGuard(),
+                currentUserProvider);
     }
 
     private Season season() {
         return Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
     }
 
+    /** Deadline must stay in the future or GameweekDeadlineGuard closes it (#36). */
     private Gameweek gameweek() {
         return Gameweek.builder().id(20L).seasonId(10L).number(1)
-                .deadlineDateTime(LocalDateTime.of(2025, 8, 1, 12, 0)).status(GameweekStatus.UPCOMING).build();
+                .deadlineDateTime(LocalDateTime.now().plusDays(1)).status(GameweekStatus.UPCOMING).build();
     }
 
     private FantasySquad squad() {
@@ -223,6 +227,35 @@ class LineupServiceTest {
         SubmitLineupRequest request = new SubmitLineupRequest(starters, bench, 1L);
 
         assertThatThrownBy(() -> lineupService().submit(1L, 10L, 20L, request)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void submitRejectsOnceTheDeadlineHasPassed() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(20L)).thenReturn(Optional.of(
+                Gameweek.builder().id(20L).seasonId(10L).number(1)
+                        .deadlineDateTime(LocalDateTime.now().minusMinutes(1))
+                        .status(GameweekStatus.UPCOMING).build()));
+        SubmitLineupRequest request = new SubmitLineupRequest(starterIds(), benchIds(), 1L);
+
+        assertThatThrownBy(() -> lineupService().submit(1L, 10L, 20L, request))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("change your lineup");
+        verify(gameweekLineupRepository, never()).save(any());
+    }
+
+    @Test
+    void submitRejectsWhenTheGameweekIsLocked() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(20L)).thenReturn(Optional.of(
+                Gameweek.builder().id(20L).seasonId(10L).number(1)
+                        .deadlineDateTime(LocalDateTime.now().plusDays(1))
+                        .status(GameweekStatus.LOCKED).build()));
+        SubmitLineupRequest request = new SubmitLineupRequest(starterIds(), benchIds(), 1L);
+
+        assertThatThrownBy(() -> lineupService().submit(1L, 10L, 20L, request))
+                .isInstanceOf(ConflictException.class);
+        verify(gameweekLineupRepository, never()).save(any());
     }
 
     @Test

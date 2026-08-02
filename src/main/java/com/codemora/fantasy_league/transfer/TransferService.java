@@ -17,6 +17,7 @@ import com.codemora.fantasy_league.fantasysquad.FantasySquadRepository;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayer;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayerRepository;
 import com.codemora.fantasy_league.gameweek.Gameweek;
+import com.codemora.fantasy_league.gameweek.GameweekDeadlineGuard;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.player.Player;
 import com.codemora.fantasy_league.player.PlayerRepository;
@@ -28,11 +29,6 @@ import com.codemora.fantasy_league.transfer.dto.TransferResponse;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Deadline locking ("transfers only while the gameweek is UPCOMING") is
- * deferred to #36, consistent with squad creation (#29) and lineup selection
- * (#37). #36 can now cover all three in one pass.
- */
 @Service
 @Slf4j
 public class TransferService {
@@ -48,6 +44,7 @@ public class TransferService {
     private final SquadPlayerRepository squadPlayerRepository;
     private final PlayerRepository playerRepository;
     private final TransferRepository transferRepository;
+    private final GameweekDeadlineGuard gameweekDeadlineGuard;
     private final CurrentUserProvider currentUserProvider;
 
     public TransferService(
@@ -57,6 +54,7 @@ public class TransferService {
             SquadPlayerRepository squadPlayerRepository,
             PlayerRepository playerRepository,
             TransferRepository transferRepository,
+            GameweekDeadlineGuard gameweekDeadlineGuard,
             CurrentUserProvider currentUserProvider) {
         this.seasonRepository = seasonRepository;
         this.gameweekRepository = gameweekRepository;
@@ -64,6 +62,7 @@ public class TransferService {
         this.squadPlayerRepository = squadPlayerRepository;
         this.playerRepository = playerRepository;
         this.transferRepository = transferRepository;
+        this.gameweekDeadlineGuard = gameweekDeadlineGuard;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -71,6 +70,7 @@ public class TransferService {
     public MakeTransferResponse makeTransfer(Long leagueId, Long seasonId, Long gameweekId, MakeTransferRequest request) {
         findSeasonInLeague(leagueId, seasonId);
         Gameweek gameweek = findGameweekInSeason(seasonId, gameweekId);
+        gameweekDeadlineGuard.assertOpenForChanges(gameweek, "make a transfer");
         FantasySquad squad = findMySquad(seasonId);
 
         if (request.playerOutId().equals(request.playerInId())) {

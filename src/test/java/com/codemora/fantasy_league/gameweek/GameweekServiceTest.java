@@ -2,6 +2,9 @@ package com.codemora.fantasy_league.gameweek;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
@@ -13,8 +16,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.gameweek.dto.GameweekResponse;
+import com.codemora.fantasy_league.gameweek.dto.UpdateGameweekStatusRequest;
 import com.codemora.fantasy_league.season.Season;
 import com.codemora.fantasy_league.season.SeasonRepository;
 
@@ -32,6 +37,80 @@ class GameweekServiceTest {
 
     private Season season() {
         return Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+    }
+
+    private Gameweek gameweekWithStatus(GameweekStatus status) {
+        return Gameweek.builder().id(20L).seasonId(10L).number(3)
+                .deadlineDateTime(LocalDateTime.now().plusDays(1)).status(status).build();
+    }
+
+    private void stubStatusUpdate(GameweekStatus current) {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(20L)).thenReturn(Optional.of(gameweekWithStatus(current)));
+    }
+
+    @Test
+    void updateStatusAdvancesOneStepAlongTheLifecycle() {
+        stubStatusUpdate(GameweekStatus.UPCOMING);
+        when(gameweekRepository.save(any(Gameweek.class))).thenAnswer(i -> i.getArgument(0));
+
+        GameweekResponse response = gameweekService().updateStatus(1L, 10L, 20L,
+                new UpdateGameweekStatusRequest(GameweekStatus.LOCKED));
+
+        assertThat(response.status()).isEqualTo(GameweekStatus.LOCKED);
+    }
+
+    @Test
+    void updateStatusRejectsSkippingAStep() {
+        stubStatusUpdate(GameweekStatus.UPCOMING);
+
+        assertThatThrownBy(() -> gameweekService().updateStatus(1L, 10L, 20L,
+                new UpdateGameweekStatusRequest(GameweekStatus.COMPLETE)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("the only allowed next status is LOCKED");
+        verify(gameweekRepository, never()).save(any());
+    }
+
+    @Test
+    void updateStatusRejectsRewindingTheLifecycle() {
+        stubStatusUpdate(GameweekStatus.IN_PROGRESS);
+
+        // rewinding would reopen a deadline that has already passed
+        assertThatThrownBy(() -> gameweekService().updateStatus(1L, 10L, 20L,
+                new UpdateGameweekStatusRequest(GameweekStatus.UPCOMING)))
+                .isInstanceOf(ConflictException.class);
+        verify(gameweekRepository, never()).save(any());
+    }
+
+    @Test
+    void updateStatusRejectsNoOpTransition() {
+        stubStatusUpdate(GameweekStatus.LOCKED);
+
+        assertThatThrownBy(() -> gameweekService().updateStatus(1L, 10L, 20L,
+                new UpdateGameweekStatusRequest(GameweekStatus.LOCKED)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("already LOCKED");
+    }
+
+    @Test
+    void updateStatusRejectsAdvancingPastComplete() {
+        stubStatusUpdate(GameweekStatus.COMPLETE);
+
+        assertThatThrownBy(() -> gameweekService().updateStatus(1L, 10L, 20L,
+                new UpdateGameweekStatusRequest(GameweekStatus.IN_PROGRESS)))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void updateStatusRejectsGameweekFromAnotherSeason() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(20L)).thenReturn(Optional.of(
+                Gameweek.builder().id(20L).seasonId(99L).number(3)
+                        .deadlineDateTime(LocalDateTime.now().plusDays(1)).status(GameweekStatus.UPCOMING).build()));
+
+        assertThatThrownBy(() -> gameweekService().updateStatus(1L, 10L, 20L,
+                new UpdateGameweekStatusRequest(GameweekStatus.LOCKED)))
+                .isInstanceOf(NotFoundException.class);
     }
 
     @Test

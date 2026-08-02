@@ -141,6 +141,32 @@ class GameweekPointsServiceTest {
         assertThat(benchBreakdown.points()).isEqualTo(0);
         assertThat(response.transferPointsCost()).isZero();
         assertThat(response.playerPoints()).isEqualTo(41);
+        // gameweek() is IN_PROGRESS, so these points aren't official yet (#36)
+        assertThat(response.official()).isFalse();
+    }
+
+    @Test
+    void pointsAreOnlyOfficialOnceTheGameweekIsComplete() {
+        Player player1 = Player.builder().id(1L).teamId(100L).createdByUserId(1L).name("Keeper").position(Position.GK).marketValue(50).build();
+        List<LineupSlot> slots = List.of(
+                LineupSlot.builder().id(1001L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build());
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(20L)).thenReturn(Optional.of(
+                Gameweek.builder().id(20L).seasonId(10L).number(3)
+                        .deadlineDateTime(LocalDateTime.of(2025, 8, 1, 12, 0))
+                        .status(GameweekStatus.COMPLETE).build()));
+        when(currentUserProvider.getUserId()).thenReturn(7L);
+        when(fantasySquadRepository.findByUserIdAndSeasonId(7L, 10L)).thenReturn(Optional.of(
+                FantasySquad.builder().id(500L).userId(7L).seasonId(10L).bankBalance(100).freeTransfers(1).build()));
+        when(gameweekLineupRepository.findBySquadIdAndGameweekId(500L, 20L)).thenReturn(Optional.of(
+                GameweekLineup.builder().id(900L).squadId(500L).gameweekId(20L).captainPlayerId(1L).build()));
+        when(lineupSlotRepository.findByLineupId(900L)).thenReturn(slots);
+        when(playerRepository.findAllById(anyCollection())).thenReturn(List.of(player1));
+        when(fixtureRepository.findByGameweekId(20L)).thenReturn(List.of());
+        when(scoringRuleRepository.findBySeasonId(10L)).thenReturn(List.of(rule(Position.GK, 10, 3, 4)));
+        when(transferRepository.findBySquadIdAndGameweekId(500L, 20L)).thenReturn(List.of());
+
+        assertThat(service().findPoints(1L, 10L, 20L).official()).isTrue();
     }
 
     @Test

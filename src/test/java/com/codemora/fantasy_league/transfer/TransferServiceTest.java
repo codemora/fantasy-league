@@ -27,6 +27,7 @@ import com.codemora.fantasy_league.fantasysquad.FantasySquadRepository;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayer;
 import com.codemora.fantasy_league.fantasysquad.SquadPlayerRepository;
 import com.codemora.fantasy_league.gameweek.Gameweek;
+import com.codemora.fantasy_league.gameweek.GameweekDeadlineGuard;
 import com.codemora.fantasy_league.gameweek.GameweekRepository;
 import com.codemora.fantasy_league.gameweek.GameweekStatus;
 import com.codemora.fantasy_league.player.Player;
@@ -60,18 +61,21 @@ class TransferServiceTest {
     private static final Long GW2 = 22L;
     private static final Long GW3 = 23L;
 
+    /** Real guard rather than a mock: it's a pure component, so exercise the actual rule. */
     private TransferService service() {
         return new TransferService(seasonRepository, gameweekRepository, fantasySquadRepository,
-                squadPlayerRepository, playerRepository, transferRepository, currentUserProvider);
+                squadPlayerRepository, playerRepository, transferRepository, new GameweekDeadlineGuard(),
+                currentUserProvider);
     }
 
     private Season season() {
         return Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
     }
 
+    /** Deadlines stay in the future or GameweekDeadlineGuard closes the gameweek (#36). */
     private Gameweek gameweek(Long id, int number) {
         return Gameweek.builder().id(id).seasonId(10L).number(number)
-                .deadlineDateTime(LocalDateTime.of(2025, 8, number, 12, 0)).status(GameweekStatus.UPCOMING).build();
+                .deadlineDateTime(LocalDateTime.now().plusDays(number)).status(GameweekStatus.UPCOMING).build();
     }
 
     private Player player(long id, long teamId, Position position, int marketValue) {
@@ -267,6 +271,33 @@ class TransferServiceTest {
 
         assertThatThrownBy(() -> service().makeTransfer(1L, 10L, GW1, new MakeTransferRequest(1L, 9L)))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void rejectsTransferOnceTheDeadlineHasPassed() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(GW1)).thenReturn(Optional.of(
+                Gameweek.builder().id(GW1).seasonId(10L).number(1)
+                        .deadlineDateTime(LocalDateTime.now().minusMinutes(1))
+                        .status(GameweekStatus.UPCOMING).build()));
+
+        assertThatThrownBy(() -> service().makeTransfer(1L, 10L, GW1, new MakeTransferRequest(1L, 9L)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("make a transfer");
+        verify(transferRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsTransferWhenTheGameweekIsInProgress() {
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(season()));
+        when(gameweekRepository.findById(GW1)).thenReturn(Optional.of(
+                Gameweek.builder().id(GW1).seasonId(10L).number(1)
+                        .deadlineDateTime(LocalDateTime.now().plusDays(1))
+                        .status(GameweekStatus.IN_PROGRESS).build()));
+
+        assertThatThrownBy(() -> service().makeTransfer(1L, 10L, GW1, new MakeTransferRequest(1L, 9L)))
+                .isInstanceOf(ConflictException.class);
+        verify(transferRepository, never()).save(any());
     }
 
     @Test
