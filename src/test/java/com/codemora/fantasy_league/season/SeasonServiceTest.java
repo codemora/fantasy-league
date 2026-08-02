@@ -16,9 +16,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.league.LeagueRepository;
+import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
+import com.codemora.fantasy_league.team.TeamRepository;
 
 @ExtendWith(MockitoExtension.class)
 class SeasonServiceTest {
@@ -27,9 +30,13 @@ class SeasonServiceTest {
     private SeasonRepository seasonRepository;
     @Mock
     private LeagueRepository leagueRepository;
+    @Mock
+    private SeasonEntrantRepository seasonEntrantRepository;
+    @Mock
+    private TeamRepository teamRepository;
 
     private SeasonService seasonService() {
-        return new SeasonService(seasonRepository, leagueRepository);
+        return new SeasonService(seasonRepository, leagueRepository, seasonEntrantRepository, teamRepository);
     }
 
     @Test
@@ -151,5 +158,66 @@ class SeasonServiceTest {
         when(seasonRepository.hasAnyFantasySquads(10L)).thenReturn(true);
 
         assertThatThrownBy(() -> seasonService().delete(1L, 10L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void addEntrantSavesNewEntrant() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(teamRepository.existsById(5L)).thenReturn(true);
+        when(seasonEntrantRepository.existsBySeasonIdAndTeamId(10L, 5L)).thenReturn(false);
+        when(seasonEntrantRepository.countBySeasonId(10L)).thenReturn(3L);
+        when(seasonEntrantRepository.save(any(SeasonEntrant.class))).thenAnswer(invocation -> {
+            SeasonEntrant e = invocation.getArgument(0);
+            e.setId(100L);
+            return e;
+        });
+
+        SeasonEntrantResponse response = seasonService().addEntrant(1L, 10L, new AddSeasonEntrantRequest(5L));
+
+        assertThat(response.id()).isEqualTo(100L);
+        assertThat(response.seasonId()).isEqualTo(10L);
+        assertThat(response.teamId()).isEqualTo(5L);
+    }
+
+    @Test
+    void addEntrantRejectsUnknownSeason() {
+        when(seasonRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> seasonService().addEntrant(1L, 99L, new AddSeasonEntrantRequest(5L)))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void addEntrantRejectsUnknownTeam() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(teamRepository.existsById(99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> seasonService().addEntrant(1L, 10L, new AddSeasonEntrantRequest(99L)))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void addEntrantRejectsTeamAlreadyEntered() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(teamRepository.existsById(5L)).thenReturn(true);
+        when(seasonEntrantRepository.existsBySeasonIdAndTeamId(10L, 5L)).thenReturn(true);
+
+        assertThatThrownBy(() -> seasonService().addEntrant(1L, 10L, new AddSeasonEntrantRequest(5L)))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void addEntrantRejectsWhenSeasonIsFull() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(teamRepository.existsById(5L)).thenReturn(true);
+        when(seasonEntrantRepository.existsBySeasonIdAndTeamId(10L, 5L)).thenReturn(false);
+        when(seasonEntrantRepository.countBySeasonId(10L)).thenReturn(20L);
+
+        assertThatThrownBy(() -> seasonService().addEntrant(1L, 10L, new AddSeasonEntrantRequest(5L)))
+                .isInstanceOf(ConflictException.class);
     }
 }

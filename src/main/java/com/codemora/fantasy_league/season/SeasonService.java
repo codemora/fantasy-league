@@ -6,9 +6,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.league.LeagueRepository;
+import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
+import com.codemora.fantasy_league.team.TeamRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,10 +21,18 @@ public class SeasonService {
 
     private final SeasonRepository seasonRepository;
     private final LeagueRepository leagueRepository;
+    private final SeasonEntrantRepository seasonEntrantRepository;
+    private final TeamRepository teamRepository;
 
-    public SeasonService(SeasonRepository seasonRepository, LeagueRepository leagueRepository) {
+    public SeasonService(
+            SeasonRepository seasonRepository,
+            LeagueRepository leagueRepository,
+            SeasonEntrantRepository seasonEntrantRepository,
+            TeamRepository teamRepository) {
         this.seasonRepository = seasonRepository;
         this.leagueRepository = leagueRepository;
+        this.seasonEntrantRepository = seasonEntrantRepository;
+        this.teamRepository = teamRepository;
     }
 
     @Transactional
@@ -82,6 +93,29 @@ public class SeasonService {
         }
         seasonRepository.delete(season);
         log.info("season_deleted id={} league_id={} period={}", season.getId(), season.getLeagueId(), season.getPeriod());
+    }
+
+    @Transactional
+    public SeasonEntrantResponse addEntrant(Long leagueId, Long seasonId, AddSeasonEntrantRequest request) {
+        Season season = findInLeague(leagueId, seasonId);
+        Long teamId = request.teamId();
+        if (!teamRepository.existsById(teamId)) {
+            throw new NotFoundException("No team with id " + teamId);
+        }
+        if (seasonEntrantRepository.existsBySeasonIdAndTeamId(seasonId, teamId)) {
+            log.warn("season_entrant_conflict season_id={} team_id={} reason=already_entered", seasonId, teamId);
+            throw new ConflictException("Team " + teamId + " is already entered in this season");
+        }
+        long currentEntrants = seasonEntrantRepository.countBySeasonId(seasonId);
+        if (currentEntrants >= season.getTeamLimit()) {
+            log.warn("season_entrant_conflict season_id={} team_id={} reason=season_full current_entrants={} team_limit={}",
+                    seasonId, teamId, currentEntrants, season.getTeamLimit());
+            throw new ConflictException("Season '" + season.getPeriod() + "' already has its full " + season.getTeamLimit() + " teams");
+        }
+        SeasonEntrant entrant = seasonEntrantRepository.save(
+                SeasonEntrant.builder().seasonId(seasonId).teamId(teamId).build());
+        log.info("season_entrant_added season_id={} team_id={}", seasonId, teamId);
+        return new SeasonEntrantResponse(entrant.getId(), entrant.getSeasonId(), entrant.getTeamId());
     }
 
     /**
