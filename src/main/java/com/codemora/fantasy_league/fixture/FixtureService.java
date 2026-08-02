@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.fixture.dto.AddFixtureResultRequest;
 import com.codemora.fantasy_league.fixture.dto.EditFixtureRequest;
 import com.codemora.fantasy_league.fixture.dto.FixtureResponse;
 import com.codemora.fantasy_league.fixture.dto.GenerateFixturesResponse;
@@ -127,6 +128,24 @@ public class FixtureService {
         fixture.setStartDateTime(request.startDateTime());
         Fixture saved = fixtureRepository.save(fixture);
         log.info("fixture_updated id={} start_date_time={}", saved.getId(), saved.getStartDateTime());
+        return toResponse(saved);
+    }
+
+    /**
+     * Records (or corrects) a fixture's result. Standings (#15) are computed
+     * live from fixture results rather than stored, so there's nothing further
+     * to update here for the league table to reflect this -- it does so
+     * automatically the next time it's read.
+     */
+    @Transactional
+    public FixtureResponse addResult(Long leagueId, Long seasonId, Long fixtureId, AddFixtureResultRequest request) {
+        Fixture fixture = findInSeason(leagueId, seasonId, fixtureId);
+        fixture.setHomeTeamScore(request.homeTeamScore());
+        fixture.setAwayTeamScore(request.awayTeamScore());
+        fixture.setPlayed(true);
+        Fixture saved = fixtureRepository.save(fixture);
+        log.info("fixture_result_recorded id={} home_score={} away_score={}",
+                saved.getId(), saved.getHomeTeamScore(), saved.getAwayTeamScore());
         return toResponse(saved);
     }
 
