@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.codemora.fantasy_league.auth.Role;
@@ -83,5 +85,15 @@ class TeamRepositoryTest {
                 arsenal.getId(), adminId, "Bukayo Saka", "MID", 100);
 
         assertThat(teamRepository.hasAnyPlayers(arsenal.getId())).isTrue();
+    }
+
+    @Test
+    void findByNameContainingIgnoreCaseMatchesPartialAndCaseInsensitively() {
+        teamRepository.save(Team.builder().createdByUserId(adminId).name("Arsenal").build());
+        teamRepository.save(Team.builder().createdByUserId(adminId).name("Chelsea").build());
+
+        Page<Team> result = teamRepository.findByNameContainingIgnoreCase("arse", PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).extracting(Team::getName).containsExactly("Arsenal");
     }
 }

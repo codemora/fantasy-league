@@ -1,8 +1,11 @@
 package com.codemora.fantasy_league.team;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.codemora.fantasy_league.common.PageResponse;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
@@ -73,6 +76,19 @@ public class TeamService {
         }
         teamRepository.delete(team);
         log.info("team_deleted id={} name={}", team.getId(), team.getName());
+    }
+
+    public TeamResponse findById(Long id) {
+        return teamRepository.findById(id)
+                .map(this::toResponse)
+                .orElseThrow(() -> new NotFoundException("No team with id " + id));
+    }
+
+    public PageResponse<TeamResponse> search(String name, Pageable pageable) {
+        Page<Team> page = (name == null || name.isBlank())
+                ? teamRepository.findAll(pageable)
+                : teamRepository.findByNameContainingIgnoreCase(name, pageable);
+        return PageResponse.from(page.map(this::toResponse));
     }
 
     private TeamResponse toResponse(Team team) {
