@@ -1,5 +1,7 @@
 package com.codemora.fantasy_league.season;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
@@ -71,5 +74,14 @@ public class SeasonController {
             @PathVariable Long leagueId, @PathVariable Long id, @PathVariable Long teamId) {
         seasonService.removeEntrant(leagueId, id, teamId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/entrants/generate")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Generate simulated teams for a season",
+            description = "ADMIN only. Creates brand-new teams (distinct from #11's add-existing-team flow) up to team_limit.")
+    public ResponseEntity<List<GeneratedEntrantResponse>> generateEntrants(
+            @PathVariable Long leagueId, @PathVariable Long id) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(seasonService.generateEntrants(leagueId, id));
     }
 }

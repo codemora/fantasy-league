@@ -1,16 +1,22 @@
 package com.codemora.fantasy_league.season;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.league.LeagueRepository;
 import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
+import com.codemora.fantasy_league.team.Team;
 import com.codemora.fantasy_league.team.TeamRepository;
 
 import lombok.extern.slf4j.Slf4j;
@@ -23,16 +29,22 @@ public class SeasonService {
     private final LeagueRepository leagueRepository;
     private final SeasonEntrantRepository seasonEntrantRepository;
     private final TeamRepository teamRepository;
+    private final SimulatedTeamNameGenerator teamNameGenerator;
+    private final CurrentUserProvider currentUserProvider;
 
     public SeasonService(
             SeasonRepository seasonRepository,
             LeagueRepository leagueRepository,
             SeasonEntrantRepository seasonEntrantRepository,
-            TeamRepository teamRepository) {
+            TeamRepository teamRepository,
+            SimulatedTeamNameGenerator teamNameGenerator,
+            CurrentUserProvider currentUserProvider) {
         this.seasonRepository = seasonRepository;
         this.leagueRepository = leagueRepository;
         this.seasonEntrantRepository = seasonEntrantRepository;
         this.teamRepository = teamRepository;
+        this.teamNameGenerator = teamNameGenerator;
+        this.currentUserProvider = currentUserProvider;
     }
 
     @Transactional
@@ -129,6 +141,37 @@ public class SeasonService {
         }
         seasonEntrantRepository.delete(entrant);
         log.info("season_entrant_removed season_id={} team_id={}", seasonId, teamId);
+    }
+
+    /**
+     * Creates brand-new simulated Team records and enters them into the season
+     * in one action, up to team_limit -- distinct from addEntrant (#11), which
+     * adds already-existing teams. Generates at most (team_limit - current
+     * entrants) teams; if the season is already full, returns an empty list
+     * rather than an error, since "top up to the limit" naturally yields zero.
+     */
+    @Transactional
+    public List<GeneratedEntrantResponse> generateEntrants(Long leagueId, Long seasonId) {
+        Season season = findInLeague(leagueId, seasonId);
+        long currentEntrants = seasonEntrantRepository.countBySeasonId(seasonId);
+        int toGenerate = (int) Math.max(0, season.getTeamLimit() - currentEntrants);
+
+        List<GeneratedEntrantResponse> generated = new ArrayList<>();
+        Long adminId = currentUserProvider.getUserId();
+        for (String candidateName : teamNameGenerator.candidateNames()) {
+            if (generated.size() >= toGenerate) {
+                break;
+            }
+            if (teamRepository.existsByName(candidateName)) {
+                continue;
+            }
+            Team team = teamRepository.save(Team.builder().createdByUserId(adminId).name(candidateName).build());
+            SeasonEntrant entrant = seasonEntrantRepository.save(
+                    SeasonEntrant.builder().seasonId(seasonId).teamId(team.getId()).build());
+            generated.add(new GeneratedEntrantResponse(entrant.getId(), team.getId(), team.getName()));
+        }
+        log.info("season_entrants_generated season_id={} count={}", seasonId, generated.size());
+        return generated;
     }
 
     /**

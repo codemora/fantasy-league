@@ -3,9 +3,13 @@ package com.codemora.fantasy_league.season;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -15,12 +19,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.config.CurrentUserProvider;
 import com.codemora.fantasy_league.league.LeagueRepository;
 import com.codemora.fantasy_league.season.dto.AddSeasonEntrantRequest;
 import com.codemora.fantasy_league.season.dto.CreateSeasonRequest;
+import com.codemora.fantasy_league.season.dto.GeneratedEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonEntrantResponse;
 import com.codemora.fantasy_league.season.dto.SeasonResponse;
 import com.codemora.fantasy_league.season.dto.UpdateSeasonRequest;
+import com.codemora.fantasy_league.team.Team;
 import com.codemora.fantasy_league.team.TeamRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,9 +41,19 @@ class SeasonServiceTest {
     private SeasonEntrantRepository seasonEntrantRepository;
     @Mock
     private TeamRepository teamRepository;
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
+    // Real instance: trivial, deterministic, no external deps -- exercising the
+    // actual candidate-name logic is more meaningful than mocking it out.
+    private final SimulatedTeamNameGenerator teamNameGenerator = new SimulatedTeamNameGenerator();
+
+    private int generatedTeamCount = 0;
+    private int generatedEntrantCount = 0;
 
     private SeasonService seasonService() {
-        return new SeasonService(seasonRepository, leagueRepository, seasonEntrantRepository, teamRepository);
+        return new SeasonService(
+                seasonRepository, leagueRepository, seasonEntrantRepository, teamRepository, teamNameGenerator, currentUserProvider);
     }
 
     @Test
@@ -120,7 +137,7 @@ class SeasonServiceTest {
 
         seasonService().delete(1L, 10L);
 
-        org.mockito.Mockito.verify(seasonRepository).delete(existing);
+        verify(seasonRepository).delete(existing);
     }
 
     @Test
@@ -231,7 +248,7 @@ class SeasonServiceTest {
 
         seasonService().removeEntrant(1L, 10L, 5L);
 
-        org.mockito.Mockito.verify(seasonEntrantRepository).delete(entrant);
+        verify(seasonEntrantRepository).delete(entrant);
     }
 
     @Test
@@ -259,5 +276,75 @@ class SeasonServiceTest {
         when(seasonRepository.hasAnyFixtures(10L)).thenReturn(true);
 
         assertThatThrownBy(() -> seasonService().removeEntrant(1L, 10L, 5L)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void generateEntrantsCreatesTeamsUpToRemainingCapacity() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonEntrantRepository.countBySeasonId(10L)).thenReturn(18L);
+        when(teamRepository.existsByName(any())).thenReturn(false);
+        when(currentUserProvider.getUserId()).thenReturn(7L);
+        when(teamRepository.save(any(Team.class))).thenAnswer(invocation -> {
+            Team t = invocation.getArgument(0);
+            t.setId((long) (100 + generatedTeamCount++));
+            return t;
+        });
+        when(seasonEntrantRepository.save(any(SeasonEntrant.class))).thenAnswer(invocation -> {
+            SeasonEntrant e = invocation.getArgument(0);
+            e.setId((long) (200 + generatedEntrantCount++));
+            return e;
+        });
+
+        List<GeneratedEntrantResponse> generated = seasonService().generateEntrants(1L, 10L);
+
+        assertThat(generated).hasSize(2);
+        assertThat(generated).extracting(GeneratedEntrantResponse::teamId).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void generateEntrantsSkipsNamesAlreadyTaken() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonEntrantRepository.countBySeasonId(10L)).thenReturn(19L);
+        String firstCandidate = teamNameGenerator.candidateNames().get(0);
+        when(teamRepository.existsByName(firstCandidate)).thenReturn(true);
+        when(teamRepository.existsByName(argThat(name -> !firstCandidate.equals(name))))
+                .thenReturn(false);
+        when(currentUserProvider.getUserId()).thenReturn(7L);
+        when(teamRepository.save(any(Team.class))).thenAnswer(invocation -> {
+            Team t = invocation.getArgument(0);
+            t.setId(100L);
+            return t;
+        });
+        when(seasonEntrantRepository.save(any(SeasonEntrant.class))).thenAnswer(invocation -> {
+            SeasonEntrant e = invocation.getArgument(0);
+            e.setId(200L);
+            return e;
+        });
+
+        List<GeneratedEntrantResponse> generated = seasonService().generateEntrants(1L, 10L);
+
+        assertThat(generated).hasSize(1);
+        assertThat(generated.get(0).teamName()).isNotEqualTo(firstCandidate);
+    }
+
+    @Test
+    void generateEntrantsReturnsEmptyListWhenSeasonAlreadyFull() {
+        Season existing = Season.builder().id(10L).leagueId(1L).period("2025-26").teamLimit(20).startingBudget(1000).build();
+        when(seasonRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(seasonEntrantRepository.countBySeasonId(10L)).thenReturn(20L);
+
+        List<GeneratedEntrantResponse> generated = seasonService().generateEntrants(1L, 10L);
+
+        assertThat(generated).isEmpty();
+        verify(teamRepository, never()).save(any());
+    }
+
+    @Test
+    void generateEntrantsRejectsUnknownSeason() {
+        when(seasonRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> seasonService().generateEntrants(1L, 99L)).isInstanceOf(NotFoundException.class);
     }
 }
