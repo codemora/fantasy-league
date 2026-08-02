@@ -110,4 +110,37 @@ class FixtureControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("startDateTime"));
     }
+
+    @Test
+    void addResultSuccessReturns200() throws Exception {
+        when(fixtureService.addResult(eq(1L), eq(10L), eq(500L), any()))
+                .thenReturn(new FixtureResponse(500L, 10L, 200L, 101L, 102L, 3, 1, true, LocalDateTime.now()));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/fixtures/500/result")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"homeTeamScore\":3,\"awayTeamScore\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.homeTeamScore").value(3))
+                .andExpect(jsonPath("$.played").value(true));
+    }
+
+    @Test
+    void addResultUnknownFixtureReturns404() throws Exception {
+        when(fixtureService.addResult(eq(1L), eq(10L), eq(999L), any()))
+                .thenThrow(new NotFoundException("No fixture with id 999"));
+
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/fixtures/999/result")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"homeTeamScore\":1,\"awayTeamScore\":0}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addResultWithNegativeScoreReturnsProblemDetail() throws Exception {
+        mockMvc.perform(post("/api/v1/leagues/1/seasons/10/fixtures/500/result")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"homeTeamScore\":-1,\"awayTeamScore\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("homeTeamScore"));
+    }
 }
