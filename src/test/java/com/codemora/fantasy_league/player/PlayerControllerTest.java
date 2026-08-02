@@ -20,6 +20,7 @@ import com.codemora.fantasy_league.auth.JwtService;
 import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
+import com.codemora.fantasy_league.player.dto.PlayerProfileResponse;
 import com.codemora.fantasy_league.player.dto.PlayerResponse;
 
 /**
@@ -79,6 +80,26 @@ class PlayerControllerTest {
         when(playerService.findByTeam(eq(99L))).thenThrow(new NotFoundException("No team with id 99"));
 
         mockMvc.perform(get("/api/v1/teams/99/players"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void findProfileSuccessReturns200() throws Exception {
+        when(playerService.findProfile(eq(500L))).thenReturn(
+                new PlayerProfileResponse(500L, 1L, "Arsenal", "Bruno Silva", Position.MID, 65, 10, 3, 4, 5));
+
+        mockMvc.perform(get("/api/v1/players/500"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.teamName").value("Arsenal"))
+                .andExpect(jsonPath("$.goals").value(3))
+                .andExpect(jsonPath("$.appearances").value(10));
+    }
+
+    @Test
+    void findProfileUnknownPlayerReturns404() throws Exception {
+        when(playerService.findProfile(eq(999L))).thenThrow(new NotFoundException("No player with id 999"));
+
+        mockMvc.perform(get("/api/v1/players/999"))
                 .andExpect(status().isNotFound());
     }
 }
