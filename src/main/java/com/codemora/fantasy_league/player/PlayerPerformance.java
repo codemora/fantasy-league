@@ -1,5 +1,7 @@
 package com.codemora.fantasy_league.player;
 
+import com.codemora.fantasy_league.scoringrule.ScoringRule;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -61,4 +63,25 @@ public class PlayerPerformance {
 
     @Column(name = "red_cards", nullable = false)
     private int redCards;
+
+    /** Matches README's Scoring Rules table; the "-" cells are already 0 on the position's ScoringRule row. */
+    public int getFantasyPoints(ScoringRule rule) {
+        int points = goals * rule.getPointsPerGoal()
+                + assists * rule.getPointsPerAssist()
+                + (goalsConceded / 3) * rule.getPointsPerGoalsConcededPerThree()
+                + penaltiesSaved * rule.getPointsPerPenaltySave()
+                + penaltiesMissed * rule.getPointsPerPenaltyMiss()
+                + yellowCards * rule.getPointsPerYellowCard()
+                + redCards * rule.getPointsPerRedCard()
+                + ownGoals * rule.getPointsPerOwnGoal();
+        if (cleanSheet) {
+            points += rule.getPointsPerCleanSheet();
+        }
+        if (minutesPlayed >= 60) {
+            points += rule.getPointsPerAppearance60();
+        } else if (minutesPlayed >= 1) {
+            points += rule.getPointsPerAppearance1to59();
+        }
+        return points;
+    }
 }
