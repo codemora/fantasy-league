@@ -89,7 +89,7 @@ class LeaderboardServiceTest {
 
     private void stubScore(long squadId, int points, int hits) {
         when(squadScorer.score(eq(squadId), any(), anyMap()))
-                .thenReturn(new SquadGameweekScore(List.of(), points + hits, hits, points));
+                .thenReturn(new SquadGameweekScore(List.of(), points + hits, hits, points, null));
     }
 
     @Test

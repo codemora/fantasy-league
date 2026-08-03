@@ -10,6 +10,9 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
+import com.codemora.fantasy_league.chip.ChipType;
+import com.codemora.fantasy_league.chip.SquadChip;
+import com.codemora.fantasy_league.chip.SquadChipRepository;
 import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.fixture.Fixture;
 import com.codemora.fantasy_league.fixture.FixtureRepository;
@@ -43,6 +46,7 @@ public class SquadScorer {
     private final PlayerPerformanceRepository playerPerformanceRepository;
     private final FixtureRepository fixtureRepository;
     private final TransferRepository transferRepository;
+    private final SquadChipRepository squadChipRepository;
     private final BenchSubstitutionResolver benchSubstitutionResolver = new BenchSubstitutionResolver();
 
     public SquadScorer(
@@ -51,13 +55,15 @@ public class SquadScorer {
             PlayerRepository playerRepository,
             PlayerPerformanceRepository playerPerformanceRepository,
             FixtureRepository fixtureRepository,
-            TransferRepository transferRepository) {
+            TransferRepository transferRepository,
+            SquadChipRepository squadChipRepository) {
         this.gameweekLineupRepository = gameweekLineupRepository;
         this.lineupSlotRepository = lineupSlotRepository;
         this.playerRepository = playerRepository;
         this.playerPerformanceRepository = playerPerformanceRepository;
         this.fixtureRepository = fixtureRepository;
         this.transferRepository = transferRepository;
+        this.squadChipRepository = squadChipRepository;
     }
 
     /**
@@ -86,11 +92,14 @@ public class SquadScorer {
         int transferPointsCost = transferRepository.findBySquadIdAndGameweekId(squadId, context.gameweekId()).stream()
                 .mapToInt(Transfer::getPointsCost)
                 .sum();
+        ChipType activeChip = squadChipRepository.findBySquadIdAndGameweekId(squadId, context.gameweekId())
+                .map(SquadChip::getChipType)
+                .orElse(null);
 
         Optional<GameweekLineup> maybeLineup =
                 gameweekLineupRepository.findBySquadIdAndGameweekId(squadId, context.gameweekId());
         if (maybeLineup.isEmpty()) {
-            return SquadGameweekScore.withoutLineup(transferPointsCost);
+            return SquadGameweekScore.withoutLineup(transferPointsCost, activeChip);
         }
         GameweekLineup lineup = maybeLineup.get();
 
@@ -98,7 +107,12 @@ public class SquadScorer {
         Map<Long, Player> playersById = playerRepository.findAllById(slots.stream().map(LineupSlot::getPlayerId).toList())
                 .stream().collect(Collectors.toMap(Player::getId, p -> p));
 
-        BenchSubstitutionResolver.Result substitution = resolveSubstitutions(slots, playersById, context);
+        // Bench boost counts everyone, so no one needs substituting in for anyone else.
+        boolean benchBoost = activeChip == ChipType.BENCH_BOOST;
+        int captainMultiplier = activeChip == ChipType.TRIPLE_CAPTAIN ? 3 : 2;
+        BenchSubstitutionResolver.Result substitution = benchBoost
+                ? BenchSubstitutionResolver.Result.NONE
+                : resolveSubstitutions(slots, playersById, context);
 
         List<PlayerPointsResponse> breakdown = new ArrayList<>();
         int playerPoints = 0;
@@ -108,8 +122,9 @@ public class SquadScorer {
             boolean isCaptain = player.getId().equals(lineup.getCaptainPlayerId());
             boolean substitutedIn = substitution.subbedInPlayerIds().contains(player.getId());
             boolean substitutedOut = substitution.subbedOutPlayerIds().contains(player.getId());
-            boolean effectiveStarter = slot.getRole() == LineupRole.STARTER ? !substitutedOut : substitutedIn;
-            int points = effectiveStarter ? (isCaptain ? rawPoints * 2 : rawPoints) : 0;
+            boolean effectiveStarter = benchBoost
+                    || (slot.getRole() == LineupRole.STARTER ? !substitutedOut : substitutedIn);
+            int points = effectiveStarter ? (isCaptain ? rawPoints * captainMultiplier : rawPoints) : 0;
             playerPoints += points;
             breakdown.add(new PlayerPointsResponse(player.getId(), player.getName(), player.getPosition(),
                     slot.getRole(), isCaptain, rawPoints, points, substitutedIn, substitutedOut));
@@ -118,7 +133,7 @@ public class SquadScorer {
                 .thenComparing(PlayerPointsResponse::position)
                 .thenComparing(PlayerPointsResponse::playerName));
 
-        return SquadGameweekScore.of(breakdown, playerPoints, transferPointsCost);
+        return SquadGameweekScore.of(breakdown, playerPoints, transferPointsCost, activeChip);
     }
 
     private BenchSubstitutionResolver.Result resolveSubstitutions(

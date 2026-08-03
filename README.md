@@ -248,6 +248,21 @@ class Transfer{
 -DateTime timestamp
 }
 
+class SquadChip{
+-int id
+-int squad_id
+-int gameweek_id
+-ChipType chipType
+-DateTime activatedAt
+}
+
+class ChipType{
+<<enumeration>>
+WILDCARD
+TRIPLE_CAPTAIN
+BENCH_BOOST
+}
+
 class FantasyLeaderboard{
 <<projection>>
 -int season_id
@@ -288,8 +303,10 @@ SquadPlayer "many" --> "1" Player : selects
 FantasySquad "many" --> "1" Season : plays_in
 FantasySquad "1" --> "many" GameweekLineup : sets
 FantasySquad "1" --> "many" Transfer : logs
+FantasySquad "1" --> "many" SquadChip : plays
 Gameweek "1" --> "many" GameweekLineup : has
 Gameweek "1" --> "many" Transfer : has
+Gameweek "1" --> "many" SquadChip : has
 GameweekLineup "1" --> "many" LineupSlot : has
 LineupSlot "many" --> "1" Player : selects
 GameweekLineup "many" --> "1" Player : captain
@@ -329,6 +346,8 @@ GAMEWEEK ||--o{ TRANSFER : has
 GAMEWEEK_LINEUP }o--|| PLAYER : captains
 TRANSFER }o--|| PLAYER : "transfers out"
 TRANSFER }o--|| PLAYER : "transfers in"
+FANTASY_SQUAD ||--o{ SQUAD_CHIP : plays
+GAMEWEEK ||--o{ SQUAD_CHIP : has
 
 USER {
 int user_id
@@ -470,9 +489,17 @@ int player_in_id
 int points_cost
 datetime timestamp
 }
+
+SQUAD_CHIP {
+int squad_chip_id
+int squad_id
+int gameweek_id
+string chip_type
+datetime activated_at
+}
 ```
 
-**Constraints not expressible in the diagram:** `PLAYER_PERFORMANCE` is unique on `(player_id, fixture_id)`; `SCORING_RULE` is unique on `(season_id, position)`; `SEASON_ENTRANT` is unique on `(season_id, team_id)`.
+**Constraints not expressible in the diagram:** `PLAYER_PERFORMANCE` is unique on `(player_id, fixture_id)`; `SCORING_RULE` is unique on `(season_id, position)`; `SEASON_ENTRANT` is unique on `(season_id, team_id)`; `SQUAD_CHIP` is unique on both `(squad_id, gameweek_id)` (one chip active per gameweek) and `(squad_id, chip_type)` (each chip usable once per season).
 
 # Scoring Rules
 
@@ -502,6 +529,16 @@ Each fantasy squad has 15 players: 2 goalkeepers, 5 defenders, 5 midfielders, 3 
 For each gameweek's `GameweekLineup`, the starting XI is chosen from that squad in a valid formation via `LineupSlot` rows: exactly 1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD, totaling 11 starters (the remaining 4 are bench and never score, per the Scoring Rules above). One starter is designated captain on the `GameweekLineup` and their points are doubled for that gameweek.
 
 Transfers between gameweeks swap a `SquadPlayer` in exchange for another within the remaining budget. Each squad gets 1 free transfer per gameweek (accruing up to a maximum of 2 banked), and each additional transfer beyond the free allowance costs 4 points, recorded as `pointsCost` on the `Transfer`.
+
+## Chips
+
+Each squad may play `WILDCARD`, `TRIPLE_CAPTAIN`, and `BENCH_BOOST` at most once each per season, and only one chip can be active in any single gameweek (both enforced by unique constraints on `SquadChip`, not just app-level checks). Activating a chip is immediate and final -- there's no un-playing it once submitted, same as a transfer.
+
+- **WILDCARD** -- that gameweek's transfers are free and don't touch the banked free-transfer count, however many are made.
+- **TRIPLE_CAPTAIN** -- the captain's points are tripled instead of doubled for that gameweek.
+- **BENCH_BOOST** -- bench players' points count toward the gameweek total instead of scoring 0; auto-substitution doesn't run that week since everyone already counts.
+
+There's no vice-captain concept: if the captain happens to be auto-substituted out, the doubled (or tripled) armband is simply lost for that gameweek rather than passed to anyone else.
 
 # Gameweek Lifecycle
 

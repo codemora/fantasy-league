@@ -18,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.codemora.fantasy_league.chip.ChipType;
+import com.codemora.fantasy_league.chip.SquadChipRepository;
 import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
@@ -54,6 +56,8 @@ class TransferServiceTest {
     @Mock
     private TransferRepository transferRepository;
     @Mock
+    private SquadChipRepository squadChipRepository;
+    @Mock
     private CurrentUserProvider currentUserProvider;
 
     private static final Long SQUAD_ID = 500L;
@@ -64,8 +68,8 @@ class TransferServiceTest {
     /** Real guard rather than a mock: it's a pure component, so exercise the actual rule. */
     private TransferService service() {
         return new TransferService(seasonRepository, gameweekRepository, fantasySquadRepository,
-                squadPlayerRepository, playerRepository, transferRepository, new GameweekDeadlineGuard(),
-                currentUserProvider);
+                squadPlayerRepository, playerRepository, transferRepository, squadChipRepository,
+                new GameweekDeadlineGuard(), currentUserProvider);
     }
 
     private Season season() {
@@ -148,6 +152,60 @@ class TransferServiceTest {
 
         assertThat(response.transfer().pointsCost()).isEqualTo(4);
         assertThat(response.freeTransfersRemaining()).isZero();
+    }
+
+    /**
+     * Wildcard transfers skip the free-transfer replay's count call entirely
+     * (see TransferService#freeTransfersAvailable) rather than counting and
+     * then ignoring it, so these tests stub only what wildcard actually
+     * reaches -- not stubPersistence's countBySquadIdAndGameweekId, which
+     * would go unused and trip strict-stubbing.
+     */
+    private void stubWildcardPersistence() {
+        when(gameweekRepository.findBySeasonIdOrderByNumber(10L)).thenReturn(List.of(gameweek(GW1, 1)));
+        when(fantasySquadRepository.save(any(FantasySquad.class))).thenAnswer(i -> i.getArgument(0));
+        when(transferRepository.save(any(Transfer.class))).thenAnswer(i -> {
+            Transfer t = i.getArgument(0);
+            t.setId(900L);
+            return t;
+        });
+        when(squadChipRepository.existsBySquadIdAndGameweekIdAndChipType(SQUAD_ID, GW1, ChipType.WILDCARD))
+                .thenReturn(true);
+    }
+
+    @Test
+    void wildcardMakesATransferFreeEvenWhenNoFreeTransfersAreBanked() {
+        stubLookups(100);
+        stubSwap(70);
+        stubWildcardPersistence();
+
+        MakeTransferResponse response = service().makeTransfer(1L, 10L, GW1, new MakeTransferRequest(1L, 9L));
+
+        assertThat(response.transfer().pointsCost()).isZero();
+    }
+
+    @Test
+    void wildcardDoesNotConsumeTheFreeTransferBank() {
+        stubLookups(100);
+        stubSwap(70);
+        stubWildcardPersistence();
+
+        MakeTransferResponse response = service().makeTransfer(1L, 10L, GW1, new MakeTransferRequest(1L, 9L));
+
+        // unchanged from freeBefore (1), not decremented to 0 like a normal transfer would be
+        assertThat(response.freeTransfersRemaining()).isEqualTo(1);
+    }
+
+    @Test
+    void wildcardTransfersAreExcludedFromTheFreeTransferReplay() {
+        when(gameweekRepository.findBySeasonIdOrderByNumber(10L))
+                .thenReturn(List.of(gameweek(GW1, 1), gameweek(GW2, 2)));
+        // gw1's count is never even read -- wildcard short-circuits it, however many transfers were made
+        when(squadChipRepository.existsBySquadIdAndGameweekIdAndChipType(SQUAD_ID, GW1, ChipType.WILDCARD))
+                .thenReturn(true);
+        when(transferRepository.countBySquadIdAndGameweekId(SQUAD_ID, GW2)).thenReturn(0L);
+
+        assertThat(service().freeTransfersAvailable(SQUAD_ID, 10L, gameweek(GW2, 2))).isEqualTo(2);
     }
 
     @Test

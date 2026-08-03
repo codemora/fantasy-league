@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.codemora.fantasy_league.chip.ChipType;
+import com.codemora.fantasy_league.chip.SquadChip;
+import com.codemora.fantasy_league.chip.SquadChipRepository;
 import com.codemora.fantasy_league.common.Position;
 import com.codemora.fantasy_league.fixture.Fixture;
 import com.codemora.fantasy_league.fixture.FixtureRepository;
@@ -46,13 +49,15 @@ class SquadScorerTest {
     private FixtureRepository fixtureRepository;
     @Mock
     private TransferRepository transferRepository;
+    @Mock
+    private SquadChipRepository squadChipRepository;
 
     private static final Long SQUAD_ID = 500L;
     private static final Long GW = 20L;
 
     private SquadScorer scorer() {
         return new SquadScorer(gameweekLineupRepository, lineupSlotRepository, playerRepository,
-                playerPerformanceRepository, fixtureRepository, transferRepository);
+                playerPerformanceRepository, fixtureRepository, transferRepository, squadChipRepository);
     }
 
     private ScoringRule rule(Position position, int pointsPerGoal) {
@@ -161,6 +166,52 @@ class SquadScorerTest {
 
     private PlayerPointsResponse playerResponse(SquadGameweekScore score, long playerId) {
         return score.players().stream().filter(p -> p.playerId().equals(playerId)).findFirst().orElseThrow();
+    }
+
+    private void stubChip(ChipType chipType) {
+        when(squadChipRepository.findBySquadIdAndGameweekId(SQUAD_ID, GW)).thenReturn(Optional.of(
+                SquadChip.builder().id(1L).squadId(SQUAD_ID).gameweekId(GW).chipType(chipType)
+                        .activatedAt(LocalDateTime.now()).build()));
+    }
+
+    @Test
+    void tripleCaptainTriplesTheCaptainsPointsInsteadOfDoubling() {
+        stubLineup(
+                List.of(LineupSlot.builder().id(1L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build()),
+                List.of(player(1L, Position.GK)),
+                1L);
+        when(transferRepository.findBySquadIdAndGameweekId(SQUAD_ID, GW)).thenReturn(List.of());
+        stubChip(ChipType.TRIPLE_CAPTAIN);
+
+        SquadGameweekScore score = scorer().score(SQUAD_ID, contextWith(Map.of(
+                1L, PlayerPerformance.builder().playerId(1L).fixtureId(9000L).goals(1).minutesPlayed(90).build())),
+                rules());
+
+        // captain GK: (1*10 + 2 appearance) = 12, tripled = 36 -- not doubled
+        assertThat(score.playerPoints()).isEqualTo(36);
+        assertThat(score.activeChip()).isEqualTo(ChipType.TRIPLE_CAPTAIN);
+    }
+
+    @Test
+    void benchBoostCountsBenchPlayersPointsInsteadOfScoringThemZero() {
+        stubLineup(
+                List.of(LineupSlot.builder().id(1L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build(),
+                        LineupSlot.builder().id(2L).lineupId(900L).playerId(2L).role(LineupRole.BENCH).benchOrder(1).build()),
+                List.of(player(1L, Position.GK), player(2L, Position.MID)),
+                1L);
+        when(transferRepository.findBySquadIdAndGameweekId(SQUAD_ID, GW)).thenReturn(List.of());
+        stubChip(ChipType.BENCH_BOOST);
+
+        SquadGameweekScore score = scorer().score(SQUAD_ID, contextWith(Map.of(
+                1L, PlayerPerformance.builder().playerId(1L).fixtureId(9000L).goals(1).minutesPlayed(90).build(),
+                2L, PlayerPerformance.builder().playerId(2L).fixtureId(9000L).goals(1).minutesPlayed(90).build())),
+                rules());
+
+        PlayerPointsResponse bench = playerResponse(score, 2L);
+        // MID: 1*5 + appearance60(2) = 7, counted in full despite being on the bench
+        assertThat(bench.points()).isEqualTo(7);
+        assertThat(bench.substitutedIn()).isFalse(); // no substitution needed -- bench boost already counts everyone
+        assertThat(score.activeChip()).isEqualTo(ChipType.BENCH_BOOST);
     }
 
     @Test

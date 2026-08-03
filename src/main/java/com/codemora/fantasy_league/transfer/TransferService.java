@@ -9,6 +9,8 @@ import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.codemora.fantasy_league.chip.ChipType;
+import com.codemora.fantasy_league.chip.SquadChipRepository;
 import com.codemora.fantasy_league.common.error.ConflictException;
 import com.codemora.fantasy_league.common.error.NotFoundException;
 import com.codemora.fantasy_league.config.CurrentUserProvider;
@@ -44,6 +46,7 @@ public class TransferService {
     private final SquadPlayerRepository squadPlayerRepository;
     private final PlayerRepository playerRepository;
     private final TransferRepository transferRepository;
+    private final SquadChipRepository squadChipRepository;
     private final GameweekDeadlineGuard gameweekDeadlineGuard;
     private final CurrentUserProvider currentUserProvider;
 
@@ -54,6 +57,7 @@ public class TransferService {
             SquadPlayerRepository squadPlayerRepository,
             PlayerRepository playerRepository,
             TransferRepository transferRepository,
+            SquadChipRepository squadChipRepository,
             GameweekDeadlineGuard gameweekDeadlineGuard,
             CurrentUserProvider currentUserProvider) {
         this.seasonRepository = seasonRepository;
@@ -62,6 +66,7 @@ public class TransferService {
         this.squadPlayerRepository = squadPlayerRepository;
         this.playerRepository = playerRepository;
         this.transferRepository = transferRepository;
+        this.squadChipRepository = squadChipRepository;
         this.gameweekDeadlineGuard = gameweekDeadlineGuard;
         this.currentUserProvider = currentUserProvider;
     }
@@ -108,8 +113,12 @@ public class TransferService {
         }
         validateTeamLimit(squadPlayers, outgoing, playerIn);
 
+        // Wildcard makes the gameweek's transfers free without touching the bank
+        // at all (#40) -- as if they'd never been made, for banking purposes.
+        boolean wildcardActive = squadChipRepository.existsBySquadIdAndGameweekIdAndChipType(
+                squad.getId(), gameweekId, ChipType.WILDCARD);
         int freeBefore = freeTransfersAvailable(squad.getId(), seasonId, gameweek);
-        int pointsCost = freeBefore > 0 ? 0 : TRANSFER_POINTS_COST;
+        int pointsCost = wildcardActive || freeBefore > 0 ? 0 : TRANSFER_POINTS_COST;
 
         squadPlayerRepository.delete(outgoing);
         squadPlayerRepository.save(SquadPlayer.builder()
@@ -120,7 +129,7 @@ public class TransferService {
                 .build());
 
         squad.setBankBalance(bankAfter);
-        int freeAfter = Math.max(0, freeBefore - 1);
+        int freeAfter = wildcardActive ? freeBefore : Math.max(0, freeBefore - 1);
         squad.setFreeTransfers(freeAfter);
         fantasySquadRepository.save(squad);
 
@@ -166,7 +175,9 @@ public class TransferService {
      * total, so the bank can't drift: each gameweek grants one free transfer
      * (capped at MAX_BANKED_FREE_TRANSFERS), then that gameweek's transfers
      * consume from it. Anything consumed beyond the bank cost points at the
-     * time and doesn't carry a debt forward, hence the floor at 0.
+     * time and doesn't carry a debt forward, hence the floor at 0. A gameweek
+     * played under WILDCARD is skipped for consumption purposes (#40) -- its
+     * transfers were free and don't touch the bank, however many were made.
      */
     int freeTransfersAvailable(Long squadId, Long seasonId, Gameweek upTo) {
         int bank = 0;
@@ -175,7 +186,9 @@ public class TransferService {
                 break;
             }
             bank = Math.min(bank + 1, MAX_BANKED_FREE_TRANSFERS);
-            long used = transferRepository.countBySquadIdAndGameweekId(squadId, gameweek.getId());
+            boolean wildcardActive = squadChipRepository.existsBySquadIdAndGameweekIdAndChipType(
+                    squadId, gameweek.getId(), ChipType.WILDCARD);
+            long used = wildcardActive ? 0 : transferRepository.countBySquadIdAndGameweekId(squadId, gameweek.getId());
             bank = (int) Math.max(0, bank - used);
         }
         return bank;
