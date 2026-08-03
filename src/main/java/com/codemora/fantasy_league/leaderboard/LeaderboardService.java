@@ -63,8 +63,17 @@ public class LeaderboardService {
      */
     public List<LeaderboardRowResponse> findBySeason(Long leagueId, Long seasonId) {
         findSeasonInLeague(leagueId, seasonId);
+        return rank(seasonId, fantasySquadRepository.findBySeasonId(seasonId));
+    }
 
-        List<FantasySquad> squads = fantasySquadRepository.findBySeasonId(seasonId);
+    /**
+     * The same ranking arithmetic behind the season-wide leaderboard, reused
+     * by mini-leagues (#41) to rank an arbitrary subset of a season's squads
+     * -- a mini-league is exactly this same table, just restricted to member
+     * squads, and two implementations of "standard competition ranking" would
+     * eventually disagree.
+     */
+    public List<LeaderboardRowResponse> rank(Long seasonId, List<FantasySquad> squads) {
         if (squads.isEmpty()) {
             return List.of();
         }

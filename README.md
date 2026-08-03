@@ -1,7 +1,7 @@
 # Fantasy League
 This is an API for a fantasy league. Admins run club leagues, seasons, and fixtures; users draft simulated players onto a fantasy squad and score points based on those players' simulated match performances.
 
-> Note: `League` here means the underlying football competition (admin-managed). Private user-vs-user mini-leagues are a planned feature and will need a distinct name (e.g. `MiniLeague`) to avoid colliding with this entity.
+> Note: `League` here means the underlying football competition (admin-managed). Private user-vs-user mini-leagues are a separate entity, `MiniLeague`, to avoid colliding with this one.
 
 Significant architecture decisions (persistence pattern, stack, simulation determinism, auth, etc.) are recorded in [docs/adr](docs/adr/README.md).
 
@@ -269,6 +269,22 @@ class FantasyLeaderboard{
 +getRankings() List~FantasySquad~
 }
 
+class MiniLeague{
+-int id
+-int season_id
+-int created_by_user_id
+-String name
+-String inviteCode
+-DateTime createdAt
+}
+
+class MiniLeagueMember{
+-int id
+-int mini_league_id
+-int user_id
+-DateTime joinedAt
+}
+
 class User{
 -int id
 -String username
@@ -312,6 +328,10 @@ LineupSlot "many" --> "1" Player : selects
 GameweekLineup "many" --> "1" Player : captain
 Transfer "many" --> "1" Player : player_out
 Transfer "many" --> "1" Player : player_in
+Season "1" --> "many" MiniLeague : scopes
+User "1" --> "many" MiniLeague : creates
+MiniLeague "1" --> "many" MiniLeagueMember : has
+User "1" --> "many" MiniLeagueMember : joins
 ```
 `ADMIN` and `USER` are merged into a single `USER` entity with a `role`, since both are just accounts distinguished by permissions.
 
@@ -348,6 +368,10 @@ TRANSFER }o--|| PLAYER : "transfers out"
 TRANSFER }o--|| PLAYER : "transfers in"
 FANTASY_SQUAD ||--o{ SQUAD_CHIP : plays
 GAMEWEEK ||--o{ SQUAD_CHIP : has
+SEASON ||--o{ MINI_LEAGUE : scopes
+USER ||--o{ MINI_LEAGUE : creates
+MINI_LEAGUE ||--o{ MINI_LEAGUE_MEMBER : has
+USER ||--o{ MINI_LEAGUE_MEMBER : joins
 
 USER {
 int user_id
@@ -497,9 +521,25 @@ int gameweek_id
 string chip_type
 datetime activated_at
 }
+
+MINI_LEAGUE {
+int mini_league_id
+int season_id
+int created_by_user_id
+string name
+string invite_code
+datetime created_at
+}
+
+MINI_LEAGUE_MEMBER {
+int mini_league_member_id
+int mini_league_id
+int user_id
+datetime joined_at
+}
 ```
 
-**Constraints not expressible in the diagram:** `PLAYER_PERFORMANCE` is unique on `(player_id, fixture_id)`; `SCORING_RULE` is unique on `(season_id, position)`; `SEASON_ENTRANT` is unique on `(season_id, team_id)`; `SQUAD_CHIP` is unique on both `(squad_id, gameweek_id)` (one chip active per gameweek) and `(squad_id, chip_type)` (each chip usable once per season).
+**Constraints not expressible in the diagram:** `PLAYER_PERFORMANCE` is unique on `(player_id, fixture_id)`; `SCORING_RULE` is unique on `(season_id, position)`; `SEASON_ENTRANT` is unique on `(season_id, team_id)`; `SQUAD_CHIP` is unique on both `(squad_id, gameweek_id)` (one chip active per gameweek) and `(squad_id, chip_type)` (each chip usable once per season); `MINI_LEAGUE` is unique on `invite_code`; `MINI_LEAGUE_MEMBER` is unique on `(mini_league_id, user_id)`.
 
 # Scoring Rules
 
@@ -539,6 +579,10 @@ Each squad may play `WILDCARD`, `TRIPLE_CAPTAIN`, and `BENCH_BOOST` at most once
 - **BENCH_BOOST** -- bench players' points count toward the gameweek total instead of scoring 0; auto-substitution doesn't run that week since everyone already counts.
 
 There's no vice-captain concept: if the captain happens to be auto-substituted out, the doubled (or tripled) armband is simply lost for that gameweek rather than passed to anyone else.
+
+## Mini-Leagues
+
+A `MiniLeague` is a private, season-scoped leaderboard restricted to a subset of squads -- the same ranking as the season-wide leaderboard, just filtered to members. Creating one requires already having a fantasy squad for that season; the creator is auto-joined as its first member. Sharing the returned `inviteCode` is the only way in -- there's no browse/discover, and a non-member gets a 404 (not 403) when trying to view a mini-league's leaderboard, so its existence isn't visible to outsiders either.
 
 # Gameweek Lifecycle
 
