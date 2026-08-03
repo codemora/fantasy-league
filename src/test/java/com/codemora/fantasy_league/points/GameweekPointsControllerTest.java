@@ -42,7 +42,7 @@ class GameweekPointsControllerTest {
     void findPointsSuccessReturns200() throws Exception {
         when(gameweekPointsService.findPoints(eq(1L), eq(10L), eq(20L))).thenReturn(new GameweekPointsResponse(
                 20L, 3, List.of(new PlayerPointsResponse(1L, "Keeper", Position.GK, LineupRole.STARTER, true, 16, 32, false, false)),
-                32, 4, 28, true));
+                32, 4, 28, true, null));
 
 
         mockMvc.perform(get("/api/v1/leagues/1/seasons/10/gameweeks/20/points"))

@@ -72,7 +72,7 @@ public class GameweekPointsService {
 
         return new GameweekPointsResponse(gameweekId, gameweek.getNumber(), score.players(),
                 score.playerPoints(), score.transferPointsCost(), score.totalPoints(),
-                gameweek.getStatus() == GameweekStatus.COMPLETE);
+                gameweek.getStatus() == GameweekStatus.COMPLETE, score.activeChip());
     }
 
     private Gameweek findGameweekInSeason(Long leagueId, Long seasonId, Long gameweekId) {
