@@ -10,5 +10,7 @@ public record PlayerPointsResponse(
         LineupRole role,
         boolean captain,
         int rawPoints,
-        int points) {
+        int points,
+        boolean substitutedIn,
+        boolean substitutedOut) {
 }

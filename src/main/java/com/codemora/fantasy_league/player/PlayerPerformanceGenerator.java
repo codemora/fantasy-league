@@ -19,9 +19,10 @@ import com.codemora.fantasy_league.common.Position;
  * GameweekLineup), so this picks a fixed 4-4-2 (1 GK, 4 DEF, 4 MID, 2 FWD)
  * from each team's generated 15-player roster (2 GK/5 DEF/5 MID/3 FWD, see
  * PlayerService), capped by whatever's actually available. Starters play the
- * full 90 minutes; the rest of the squad doesn't feature at all (0 minutes,
- * no substitutions -- mirrors the "no auto-substitutions in v1" rule already
- * used for fantasy squads).
+ * full 90 minutes; the rest of the squad doesn't feature at all (0 minutes) --
+ * this simulated match engine never substitutes. That's unrelated to the
+ * fantasy-lineup auto-substitution in BenchSubstitutionResolver (#39), which
+ * operates on the fantasy squad's picks after these performances already exist.
  */
 @Component
 public class PlayerPerformanceGenerator {

@@ -108,6 +108,62 @@ class SquadScorerTest {
     }
 
     @Test
+    void substitutesANonPlayingStarterWithTheFirstEligibleBenchPlayerInBenchOrder() {
+        stubLineup(
+                List.of(LineupSlot.builder().id(1L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build(),
+                        LineupSlot.builder().id(2L).lineupId(900L).playerId(2L).role(LineupRole.BENCH).benchOrder(1).build(),
+                        LineupSlot.builder().id(3L).lineupId(900L).playerId(3L).role(LineupRole.BENCH).benchOrder(2).build()),
+                List.of(player(1L, Position.MID), player(2L, Position.MID), player(3L, Position.MID)),
+                1L); // captain is the starter who won't play -- the armband isn't transferred to the sub
+        when(transferRepository.findBySquadIdAndGameweekId(SQUAD_ID, GW)).thenReturn(List.of());
+
+        // player 1 has no recorded performance at all -- didn't feature
+        SquadGameweekScore score = scorer().score(SQUAD_ID, contextWith(Map.of(
+                2L, PlayerPerformance.builder().playerId(2L).fixtureId(9000L).goals(1).minutesPlayed(90).build(),
+                3L, PlayerPerformance.builder().playerId(3L).fixtureId(9000L).goals(1).minutesPlayed(90).build())),
+                rules());
+
+        PlayerPointsResponse starter = playerResponse(score, 1L);
+        PlayerPointsResponse subIn = playerResponse(score, 2L);
+        PlayerPointsResponse stillBenched = playerResponse(score, 3L);
+
+        assertThat(starter.points()).isZero();
+        assertThat(starter.substitutedOut()).isTrue();
+        // MID: 1*5 + appearance60(2) = 7, not doubled despite being captain -- the armband is lost, not passed on
+        assertThat(subIn.points()).isEqualTo(7);
+        assertThat(subIn.substitutedIn()).isTrue();
+        assertThat(stillBenched.points()).isZero();
+        assertThat(stillBenched.substitutedIn()).isFalse();
+        assertThat(score.playerPoints()).isEqualTo(7);
+    }
+
+    @Test
+    void substitutesTheReserveGoalkeeperWhenTheStartingGoalkeeperDoesNotPlay() {
+        stubLineup(
+                List.of(LineupSlot.builder().id(1L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build(),
+                        LineupSlot.builder().id(2L).lineupId(900L).playerId(2L).role(LineupRole.BENCH).benchOrder(1).build()),
+                List.of(player(1L, Position.GK), player(2L, Position.GK)),
+                99L); // captain isn't in the lineup here, so no doubling to worry about
+        when(transferRepository.findBySquadIdAndGameweekId(SQUAD_ID, GW)).thenReturn(List.of());
+
+        SquadGameweekScore score = scorer().score(SQUAD_ID, contextWith(Map.of(
+                2L, PlayerPerformance.builder().playerId(2L).fixtureId(9000L).minutesPlayed(90).build())),
+                rules());
+
+        PlayerPointsResponse startingGk = playerResponse(score, 1L);
+        PlayerPointsResponse reserveGk = playerResponse(score, 2L);
+
+        assertThat(startingGk.points()).isZero();
+        assertThat(startingGk.substitutedOut()).isTrue();
+        assertThat(reserveGk.substitutedIn()).isTrue();
+        assertThat(reserveGk.points()).isEqualTo(2); // GK: 0 goals + appearance60(2)
+    }
+
+    private PlayerPointsResponse playerResponse(SquadGameweekScore score, long playerId) {
+        return score.players().stream().filter(p -> p.playerId().equals(playerId)).findFirst().orElseThrow();
+    }
+
+    @Test
     void aPlayerWithNoRecordedPerformanceScoresNothing() {
         stubLineup(
                 List.of(LineupSlot.builder().id(1L).lineupId(900L).playerId(1L).role(LineupRole.STARTER).build()),

@@ -85,7 +85,7 @@ class GameweekPointsServiceTest {
         when(scoringRuleRepository.findBySeasonId(10L)).thenReturn(List.of());
         when(squadScorer.loadContext(20L)).thenReturn(new SquadScorer.GameweekContext(20L, Map.of()));
         when(squadScorer.score(eq(500L), any(), anyMap())).thenReturn(new SquadGameweekScore(
-                List.of(new PlayerPointsResponse(1L, "Keeper", Position.GK, LineupRole.STARTER, true, 16, 32)),
+                List.of(new PlayerPointsResponse(1L, "Keeper", Position.GK, LineupRole.STARTER, true, 16, 32, false, false)),
                 32, 4, 28));
     }
 
