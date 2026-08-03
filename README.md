@@ -476,7 +476,7 @@ datetime timestamp
 
 # Scoring Rules
 
-Scoring rules are configured per season (one `ScoringRule` row per position, per season), so changing them never rewrites points for gameweeks that already happened. The table below is the default set a new season is seeded with. Bench players never score; a starting player who doesn't feature scores 0 (no auto-substitutions in v1).
+Scoring rules are configured per season (one `ScoringRule` row per position, per season), so changing them never rewrites points for gameweeks that already happened. The table below is the default set a new season is seeded with. A starting player who records 0 minutes is auto-substituted by the first bench player, in bench order, who did play and whose replacement keeps the starting formation legal (reserve keeper only ever covers the starting keeper); a player left on the bench with no valid substitution never scores. There's no vice-captain -- if the captain is the one subbed out, the doubled armband is simply lost for that gameweek.
 
 | Stat | GK | DEF | MID | FWD |
 |---|---|---|---|---|

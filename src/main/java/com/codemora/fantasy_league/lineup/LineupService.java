@@ -37,16 +37,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class LineupService {
 
-    private static final int STARTER_COUNT = 11;
-    private static final int BENCH_COUNT = 4;
-
-    /** [min, max] starters allowed per position, per the README Squad Rules. */
-    private static final Map<Position, int[]> FORMATION_RANGE = Map.of(
-            Position.GK, new int[] {1, 1},
-            Position.DEF, new int[] {3, 5},
-            Position.MID, new int[] {2, 5},
-            Position.FWD, new int[] {1, 3});
-
     private final SeasonRepository seasonRepository;
     private final GameweekRepository gameweekRepository;
     private final FantasySquadRepository fantasySquadRepository;
@@ -89,8 +79,8 @@ public class LineupService {
 
         Set<Long> starterIds = new HashSet<>(request.starterPlayerIds());
         Set<Long> benchIds = new HashSet<>(request.benchPlayerIds());
-        if (starterIds.size() != STARTER_COUNT || benchIds.size() != BENCH_COUNT) {
-            throw new ConflictException("Lineup must have " + STARTER_COUNT + " distinct starters and " + BENCH_COUNT + " distinct bench players");
+        if (starterIds.size() != Formation.STARTER_COUNT || benchIds.size() != Formation.BENCH_COUNT) {
+            throw new ConflictException("Lineup must have " + Formation.STARTER_COUNT + " distinct starters and " + Formation.BENCH_COUNT + " distinct bench players");
         }
         if (!Collections.disjoint(starterIds, benchIds)) {
             throw new ConflictException("A player can't be both a starter and on the bench");
@@ -151,7 +141,7 @@ public class LineupService {
         Map<Position, Long> counts = starterIds.stream()
                 .map(playersById::get)
                 .collect(Collectors.groupingBy(Player::getPosition, Collectors.counting()));
-        FORMATION_RANGE.forEach((position, range) -> {
+        Formation.RANGE.forEach((position, range) -> {
             long count = counts.getOrDefault(position, 0L);
             if (count < range[0] || count > range[1]) {
                 throw new ConflictException("Starting XI must have " + range[0] + "-" + range[1]

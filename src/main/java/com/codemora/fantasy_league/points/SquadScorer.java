@@ -43,6 +43,7 @@ public class SquadScorer {
     private final PlayerPerformanceRepository playerPerformanceRepository;
     private final FixtureRepository fixtureRepository;
     private final TransferRepository transferRepository;
+    private final BenchSubstitutionResolver benchSubstitutionResolver = new BenchSubstitutionResolver();
 
     public SquadScorer(
             GameweekLineupRepository gameweekLineupRepository,
@@ -97,23 +98,54 @@ public class SquadScorer {
         Map<Long, Player> playersById = playerRepository.findAllById(slots.stream().map(LineupSlot::getPlayerId).toList())
                 .stream().collect(Collectors.toMap(Player::getId, p -> p));
 
+        BenchSubstitutionResolver.Result substitution = resolveSubstitutions(slots, playersById, context);
+
         List<PlayerPointsResponse> breakdown = new ArrayList<>();
         int playerPoints = 0;
         for (LineupSlot slot : slots) {
             Player player = playersById.get(slot.getPlayerId());
             int rawPoints = rawPoints(player, context, rulesByPosition);
             boolean isCaptain = player.getId().equals(lineup.getCaptainPlayerId());
-            boolean starting = slot.getRole() == LineupRole.STARTER;
-            int points = starting ? (isCaptain ? rawPoints * 2 : rawPoints) : 0;
+            boolean substitutedIn = substitution.subbedInPlayerIds().contains(player.getId());
+            boolean substitutedOut = substitution.subbedOutPlayerIds().contains(player.getId());
+            boolean effectiveStarter = slot.getRole() == LineupRole.STARTER ? !substitutedOut : substitutedIn;
+            int points = effectiveStarter ? (isCaptain ? rawPoints * 2 : rawPoints) : 0;
             playerPoints += points;
             breakdown.add(new PlayerPointsResponse(player.getId(), player.getName(), player.getPosition(),
-                    slot.getRole(), isCaptain, rawPoints, points));
+                    slot.getRole(), isCaptain, rawPoints, points, substitutedIn, substitutedOut));
         }
         breakdown.sort(Comparator.comparing(PlayerPointsResponse::role)
                 .thenComparing(PlayerPointsResponse::position)
                 .thenComparing(PlayerPointsResponse::playerName));
 
         return SquadGameweekScore.of(breakdown, playerPoints, transferPointsCost);
+    }
+
+    private BenchSubstitutionResolver.Result resolveSubstitutions(
+            List<LineupSlot> slots, Map<Long, Player> playersById, GameweekContext context) {
+        List<BenchSubstitutionResolver.Participant> starters = slots.stream()
+                .filter(s -> s.getRole() == LineupRole.STARTER)
+                .map(s -> toParticipant(s, playersById, context))
+                .toList();
+        // Bench order is the substitution priority, so it must be applied here explicitly --
+        // findByLineupId doesn't guarantee row order.
+        List<BenchSubstitutionResolver.Participant> bench = slots.stream()
+                .filter(s -> s.getRole() == LineupRole.BENCH)
+                .sorted(Comparator.comparing(LineupSlot::getBenchOrder))
+                .map(s -> toParticipant(s, playersById, context))
+                .toList();
+        return benchSubstitutionResolver.resolve(starters, bench);
+    }
+
+    private BenchSubstitutionResolver.Participant toParticipant(
+            LineupSlot slot, Map<Long, Player> playersById, GameweekContext context) {
+        Player player = playersById.get(slot.getPlayerId());
+        return new BenchSubstitutionResolver.Participant(player.getId(), player.getPosition(), played(player, context));
+    }
+
+    private boolean played(Player player, GameweekContext context) {
+        PlayerPerformance performance = context.performanceByPlayerId().get(player.getId());
+        return performance != null && performance.getMinutesPlayed() > 0;
     }
 
     private int rawPoints(Player player, GameweekContext context, Map<Position, ScoringRule> rulesByPosition) {
